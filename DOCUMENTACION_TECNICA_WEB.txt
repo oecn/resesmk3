@@ -1,0 +1,888 @@
+============================================================
+DOCUMENTACION TECNICA DEL SISTEMA WEB RECES
+============================================================
+
+Autor del documento: generado a partir del codigo actual del proyecto
+Ubicacion del sistema: web/
+Frontend: Angular
+Backend: Python con http.server + psycopg2
+Base de datos: PostgreSQL
+
+
+1. OBJETIVO GENERAL DEL SISTEMA
+------------------------------------------------------------
+
+Este sistema web esta orientado a la operacion y control de lotes de hacienda/reces, su faena, distribucion, recepcion por sucursal, analitica operativa, control de usuarios y un modulo adicional de flota.
+
+Desde el punto de vista funcional, el sistema resuelve varias necesidades operativas:
+
+- Registrar y consultar lotes comprados.
+- Registrar faenas asociadas a los lotes.
+- Registrar distribuciones por local o sucursal.
+- Obtener resumenes analiticos por lote y por periodo.
+- Controlar la recepcion fisica por sucursal, incluyendo diferencias, faltantes, sobrantes y menudencias.
+- Administrar usuarios internos y permisos por rol.
+- Administrar vehiculos, combustible, gastos y resumenes del modulo de flota.
+
+Desde el punto de vista tecnico, la aplicacion sigue un modelo clasico cliente-servidor:
+
+- Un frontend Angular corre en el navegador y centraliza toda la UI.
+- Un backend Python expone endpoints HTTP tipo REST simplificado.
+- El backend consulta y actualiza PostgreSQL.
+- La autenticacion se mantiene por cookie de sesion.
+
+
+2. ESTRUCTURA GENERAL DEL PROYECTO
+------------------------------------------------------------
+
+La estructura relevante observada en el repositorio es:
+
+- web/run.py
+  Punto de arranque del backend.
+
+- web/backend/config.py
+  Configuracion basica, principalmente DATABASE_URL y constantes del dominio.
+
+- web/backend/dashboard_api.py
+  Archivo principal del backend. Contiene:
+  - el servidor HTTP,
+  - el handler de rutas,
+  - la capa de acceso a datos del dashboard,
+  - logica de negocio para recepcion, lotes, distribuciones, resumenes y flota,
+  - generacion de PDFs.
+
+- web/backend/auth/
+  Submodulo de autenticacion/autorizacion.
+
+- web/backend/migrations/
+  Scripts de migracion de esquema.
+
+- web/frontend/
+  Proyecto Angular.
+
+- web/frontend/src/app/app.component.ts
+  Componente raiz con gran parte de la logica de presentacion y orquestacion de vistas.
+
+- web/frontend/src/app/app.component.html
+  Plantilla principal de la interfaz.
+
+- web/frontend/src/app/app.component.css
+  Estilos globales del componente principal.
+
+- web/frontend/src/app/services/dashboard.service.ts
+  Servicio HTTP tipado que encapsula llamadas al backend.
+
+- web/frontend/src/environments/environment.ts
+  URL base del backend consumido por Angular.
+
+- INICIAR.txt
+  Guia operativa para levantar backend y frontend.
+
+
+3. ARRANQUE DEL SISTEMA
+------------------------------------------------------------
+
+3.1 Backend
+
+El backend se inicia desde:
+
+  web/run.py
+
+Ese archivo solo agrega la raiz al path de Python e importa:
+
+  from web.backend.dashboard_api import main
+
+Luego ejecuta `main()`.
+
+Dentro de `dashboard_api.py`, `main()` crea:
+
+- un `ThreadingHTTPServer`
+- host `0.0.0.0`
+- puerto `8008`
+- handler `DashboardHandler`
+
+Esto significa que el backend:
+
+- no usa Flask, FastAPI ni Django;
+- utiliza la libreria estandar de Python para exponer HTTP;
+- atiende multiples requests mediante hilos.
+
+3.2 Frontend
+
+El frontend se levanta desde:
+
+  web/frontend
+  npm start
+
+Angular corre normalmente en `http://127.0.0.1:4200`.
+
+3.3 Enlace frontend-backend
+
+El archivo:
+
+  web/frontend/src/environments/environment.ts
+
+define actualmente:
+
+  apiUrl = 'http://192.168.10.12:8008/api'
+
+Esto implica que:
+
+- Angular consume el backend por red usando esa IP.
+- Si cambia el host del backend, hay que ajustar ese valor.
+- En entornos locales o despliegues futuros conviene parametrizar esta URL.
+
+
+4. MODELO DE ARQUITECTURA
+------------------------------------------------------------
+
+La arquitectura real del sistema es una mezcla entre:
+
+- backend monolitico por archivo principal,
+- frontend SPA centralizado,
+- acceso a datos SQL directo,
+- logica de negocio alojada en el backend y parcialmente en el frontend para estado visual.
+
+4.1 Backend
+
+El backend se organiza en dos capas principales visibles:
+
+1. `DashboardHandler`
+   Responsable de:
+   - parsear path y querystring,
+   - leer JSON del body,
+   - autenticar/autorizacion,
+   - enrutar a metodos del repositorio,
+   - devolver JSON o PDF.
+
+2. `DashboardRepository`
+   Responsable de:
+   - abrir conexiones PostgreSQL,
+   - ejecutar SQL,
+   - consolidar resultados,
+   - aplicar validaciones de negocio,
+   - persistir cambios.
+
+Adicionalmente existe `AuthService` en `web/backend/auth/services/auth_service.py`, que maneja la sesion y las reglas de roles.
+
+4.2 Frontend
+
+El frontend esta muy centralizado en:
+
+- `app.component.ts`
+- `app.component.html`
+- `app.component.css`
+
+No se observa una separacion fuerte en modulos Angular por feature. En cambio:
+
+- la navegacion entre secciones depende de un estado `vista`;
+- la carga de datos se hace desde el componente principal;
+- el servicio `dashboard.service.ts` centraliza la comunicacion HTTP.
+
+Esto tiene ventajas y costos:
+
+Ventajas:
+- mas simple de seguir para cambios pequenos.
+- menos dispersion de logica.
+
+Costos:
+- archivo grande y con alta responsabilidad.
+- mayor acoplamiento entre UI, estado y permisos.
+- mantenimiento mas dificil a medida que crecen los modulos.
+
+
+5. CONTROL DE VISTAS EN EL FRONTEND
+------------------------------------------------------------
+
+En `app.component.ts` existe:
+
+  type AppView = 'dashboard' | 'compras-faena' | 'resumenes' | 'recepcion' | 'distribuciones' | 'usuarios' | 'flota';
+
+Esto define las secciones principales navegables de la SPA.
+
+Cada vista se renderiza condicionalmente en `app.component.html` mediante `*ngIf`.
+
+Las vistas funcionales relevantes son:
+
+5.1 `dashboard`
+- KPIs globales.
+- Indicadores agregados.
+- informacion consolidada del negocio.
+
+5.2 `compras-faena`
+- alta y edicion de lotes,
+- registro de compra,
+- carga o ajuste de faena,
+- consulta de lotes pendientes y completados.
+
+5.3 `resumenes`
+- consulta analitica por lotes,
+- filtros por empresa, fecha, texto y cantidad maxima de filas,
+- seleccion de lotes para resumen de sucursales,
+- generacion de PDF,
+- estado persistente de lote cerrado.
+
+5.4 `recepcion`
+- recepcion por sucursal,
+- control de distribuciones efectivamente recibidas,
+- faltantes, sobrantes, diferencias,
+- carga y gestion de menudencias,
+- PDF de recepcion.
+
+5.5 `distribuciones`
+- consulta de lotes con faena,
+- alta/edicion de distribuciones,
+- control de saldo por lote,
+- historial de distribuciones del lote seleccionado.
+
+5.6 `usuarios`
+- administracion de usuarios internos,
+- rol,
+- estado activo,
+- sucursal permitida,
+- cambio de password.
+
+5.7 `flota`
+- catalogos,
+- vehiculos,
+- proveedores,
+- tipos de gasto,
+- combustible,
+- importacion de combustible,
+- gastos adicionales,
+- resumen semanal/mensual,
+- PDF del resumen mensual.
+
+
+6. GESTION DE ESTADO EN ANGULAR
+------------------------------------------------------------
+
+El frontend usa una combinacion de:
+
+- propiedades mutables simples,
+- `signal(...)`,
+- `computed(...)`.
+
+Esto indica un enfoque moderno de Angular para estado reactivo, pero sin NgRx ni store global externo.
+
+Ejemplos de estado observados:
+
+- `resumenes = signal<ResumenesData | null>(null);`
+- `recepcion = signal<RecepcionData | null>(null);`
+- `flotaCatalogos = signal<FlotaCatalogosData | null>(null);`
+- `authLoading = signal(true);`
+- `resumenLotesFiltrados = computed(() => ...)`
+
+Interpretacion tecnica:
+
+- las respuestas del backend se almacenan en signals;
+- los filtros de UI se aplican en `computed`;
+- el template consume esos valores directamente;
+- los metodos del componente disparan requests HTTP y actualizan estado.
+
+Patron general:
+
+1. El usuario cambia vista o activa una accion.
+2. El componente llama a `dashboard.service`.
+3. Angular recibe la respuesta.
+4. Se actualiza una `signal`.
+5. El template se vuelve a renderizar.
+
+
+7. SERVICIO HTTP DEL FRONTEND
+------------------------------------------------------------
+
+El archivo:
+
+  web/frontend/src/app/services/dashboard.service.ts
+
+actua como frontera entre Angular y la API.
+
+Responsabilidades principales:
+
+- definir interfaces TypeScript de los payloads;
+- construir `HttpParams`;
+- encapsular `GET`, `POST`, `PUT` y `DELETE`;
+- forzar `withCredentials: true` para usar la cookie de sesion;
+- tipar datos para frontend.
+
+Ejemplos importantes:
+
+- `getResumenes(...)`
+- `getResumenesPdf(...)`
+- `marcarResumenesCerrados(...)`
+- `getComprasFaena(...)`
+- `saveCompraLote(...)`
+- `getDistribuciones(...)`
+- `saveDistribucion(...)`
+- `getRecepcion(...)`
+- `updateRecepcionDistribuciones(...)`
+- `login(...)`, `logout(...)`, `getCurrentUser(...)`
+- endpoints del modulo de flota
+
+Observacion de diseño:
+
+Este servicio esta bien planteado como gateway de red. La mayor complejidad de negocio no vive ahi, sino en `app.component.ts` y en el backend.
+
+
+8. AUTENTICACION Y AUTORIZACION
+------------------------------------------------------------
+
+8.1 Autenticacion
+
+El backend expone:
+
+- `POST /api/auth/login`
+- `POST /api/auth/logout`
+- `GET /api/auth/me`
+
+La sesion se maneja mediante cookie:
+
+- nombre observado: `reces_session`
+- `HttpOnly`
+- `SameSite=Lax`
+
+Consecuencia tecnica:
+
+- el frontend no necesita manejar manualmente el token;
+- por eso todas las llamadas usan `withCredentials: true`;
+- la validez de la sesion se resuelve del lado backend.
+
+8.2 Roles
+
+Se observan tres roles principales:
+
+- `admin`
+- `supervisor`
+- `recepcion`
+
+8.3 Autorizacion por modulo
+
+Segun `app.component.ts` y `dashboard_api.py`, hay controles tanto en frontend como en backend.
+
+Frontend:
+- oculta o redirige vistas no autorizadas.
+
+Backend:
+- aplica la restriccion real con `_require_roles(...)` y validaciones especificas.
+
+Esto es correcto: el frontend solo mejora UX, pero la seguridad real esta en el backend.
+
+8.4 Restriccion por sucursal
+
+El rol `recepcion` puede quedar limitado a una sucursal concreta:
+
+- `luque`
+- `aregua`
+- `itaugua`
+
+Esto impacta especialmente en:
+
+- modulo de recepcion,
+- modulo de flota.
+
+El backend usa validaciones como:
+
+- `_require_sucursal_access(...)`
+- `_get_flota_sucursal_scope(...)`
+
+
+9. CONFIGURACION DE DOMINIO
+------------------------------------------------------------
+
+En `web/backend/config.py` existen constantes de dominio importantes:
+
+- `DATABASE_URL`
+- `EMPRESAS = ["Corral", "Rodeo", "Ferusa", "TROPA"]`
+- `LOCALES = ["LUQUE", "AREGUA", "ITAUGUA"]`
+
+Estas constantes condicionan varias pantallas y validaciones.
+
+Implicancias:
+
+- si se agregan empresas o sucursales, no siempre alcanzara con cambiar la base; puede requerir cambio de codigo;
+- hay parte del dominio hardcodeada.
+
+
+10. BASE DE DATOS Y ACCESO SQL
+------------------------------------------------------------
+
+10.1 Conexion
+
+El backend usa:
+
+- `psycopg2`
+- SQL escrito manualmente
+- cursores `RealDictCursor`
+
+No hay ORM.
+
+Ventajas:
+- control total del SQL;
+- consultas analiticas mas directas;
+- mejor visibilidad del costo real de acceso a datos.
+
+Desventajas:
+- mayor riesgo de crecimiento desordenado del archivo;
+- mas esfuerzo manual para consistencia de esquema;
+- migraciones no automaticas.
+
+10.2 Estrategia de conexion
+
+`DashboardRepository._connect(...)` crea una nueva conexion por uso.
+
+Se usa:
+
+- `readonly=True` para consultas,
+- `readonly=False` para mutaciones.
+
+Adicionalmente, se incorporo logica de autocorreccion de esquema para la columna `lotes.cerrado`, con `ALTER TABLE ... ADD COLUMN IF NOT EXISTS ...`.
+
+10.3 Migraciones
+
+Las migraciones estan en:
+
+  web/backend/migrations/
+
+Entre ellas:
+
+- autenticacion,
+- sucursal en usuarios,
+- base de flota,
+- ajustes de flota,
+- `007_lote_cerrado.py`
+
+Como no existe un framework de migraciones centralizado tipo Alembic o Django migrations, el control del esquema depende de ejecutar scripts o de logicas puntuales incorporadas en runtime.
+
+
+11. BACKEND: PRINCIPALES CAPACIDADES
+------------------------------------------------------------
+
+11.1 Dashboard general
+
+`GET /api/dashboard`
+
+Entrega KPIs y tablas agregadas:
+
+- resumen general,
+- compras por empresa,
+- distribuciones por local,
+- menudencias por sucursal,
+- top de menudencias,
+- lotes resumidos.
+
+11.2 Resumenes de lotes
+
+`GET /api/resumenes`
+`GET /api/resumenes/pdf`
+`POST /api/resumenes/cerrar`
+
+Incluye:
+
+- listado de lotes resumidos,
+- filtro por lotes seleccionados,
+- resumen de sucursales asociado a la seleccion,
+- exportacion PDF,
+- estado persistente `cerrado`.
+
+En backend existe una CTE importante:
+
+- `_resumen_lotes_cte()`
+
+Esta consulta consolida:
+
+- compra,
+- faena,
+- distribucion,
+- kg,
+- monto,
+- costo por kg,
+- porcentaje distribuido,
+- porcentaje restante,
+- rendimiento,
+- estado cerrado.
+
+Es una pieza central del modelo analitico.
+
+11.3 Compras y faena
+
+Endpoints principales:
+
+- `GET /api/compras-faena`
+- `POST /api/compras-faena/lotes`
+- `POST /api/compras-faena/faenas`
+- `POST /api/compras-faena/faena-total`
+
+Capacidades:
+
+- alta o edicion de lote,
+- registro de compra,
+- ajuste de total faenado,
+- validaciones de consistencia contra distribuido y comprado.
+
+11.4 Distribuciones
+
+Endpoints:
+
+- `GET /api/distribuciones`
+- `POST /api/distribuciones`
+- `DELETE /api/distribuciones`
+
+Capacidades:
+
+- listar lotes con faena,
+- seleccionar lote,
+- registrar distribucion por local,
+- controlar cabezas distribuidas,
+- marcar banderas como distribuciones con kg cero.
+
+11.5 Recepcion por sucursal
+
+Ruta base:
+
+- `GET /api/recepcion/{slug}`
+- `GET /api/recepcion/{slug}/pdf`
+- `POST /api/recepcion/{slug}/distribuciones`
+- `POST /api/recepcion/{slug}/menudencias`
+- `PUT /api/recepcion/{slug}/menudencias`
+- `DELETE /api/recepcion/{slug}/menudencias`
+
+Capacidades:
+
+- cargar recepcion diaria por sucursal,
+- corregir distribuciones recibidas,
+- registrar menudencias,
+- generar PDF de recepcion,
+- operar con control por sucursal autorizada.
+
+11.6 Usuarios
+
+Endpoints:
+
+- `GET /api/auth/users`
+- `POST /api/auth/users`
+- `PUT /api/auth/users`
+- `PUT /api/auth/users/password`
+
+Capacidades:
+
+- alta de usuario,
+- edicion,
+- activacion/desactivacion,
+- cambio de password,
+- asignacion de sucursal permitida.
+
+11.7 Flota
+
+Endpoints observados:
+
+- `GET /api/flota/catalogos`
+- `GET /api/flota/vehiculos`
+- `POST /api/flota/vehiculos`
+- `PUT /api/flota/vehiculos`
+- `POST /api/flota/proveedores`
+- `PUT /api/flota/proveedores`
+- `GET /api/flota/combustible`
+- `POST /api/flota/combustible`
+- `POST /api/flota/combustible/import`
+- `POST /api/flota/combustible/import/preview`
+- `GET /api/flota/gastos`
+- `POST /api/flota/gastos`
+- `GET /api/flota/resumen-semanal`
+- `GET /api/flota/resumen-mensual/pdf`
+
+Este modulo es funcionalmente bastante amplio e incluye:
+
+- vehiculos,
+- proveedores,
+- tipos de gasto,
+- cargas de combustible,
+- importacion de comprobantes,
+- control de kilometraje,
+- gastos adicionales,
+- resumen mensual/semanal,
+- exportacion PDF.
+
+
+12. GENERACION DE PDFS
+------------------------------------------------------------
+
+El backend usa `reportlab`.
+
+Se observan generadores para:
+
+- reporte de recepcion,
+- resumenes de lotes,
+- resumen mensual de flota.
+
+Esto significa que la salida PDF:
+
+- no depende del navegador;
+- se construye server-side;
+- usa tablas y estilos desde Python;
+- se entrega como binario descargable/abrible por el frontend.
+
+Ventaja:
+- misma salida para todos los usuarios.
+
+Costo:
+- cambios visuales en PDF requieren tocar Python y entender `reportlab`.
+
+
+13. FLUJO FUNCIONAL DE LOS MODULOS PRINCIPALES
+------------------------------------------------------------
+
+13.1 Flujo de compras-faena
+
+Flujo esperado:
+
+1. Se registra el lote comprado.
+2. Se almacena empresa, fecha, cantidad, monto y peso de compra.
+3. Posteriormente se registra la faena.
+4. El sistema valida que la faena no contradiga datos ya distribuidos.
+5. El lote queda listo para el modulo de distribuciones.
+
+13.2 Flujo de distribucion
+
+1. Se elige un lote con faena.
+2. Se registran distribuciones por local.
+3. Se controlan cabezas y kg.
+4. El sistema calcula saldo entre faenado y distribuido.
+5. Los datos alimentan resumenes y recepcion.
+
+13.3 Flujo de recepcion
+
+1. Cada sucursal consulta lo que debia recibir.
+2. Se registran kg reales, faltantes, sobrantes y observaciones.
+3. Se cargan menudencias asociadas.
+4. Se emite PDF si hace falta documentacion operativa.
+
+13.4 Flujo analitico de resumenes
+
+1. El usuario filtra lotes.
+2. El frontend consulta `/api/resumenes`.
+3. Se listan lotes con indicadores derivados.
+4. Al seleccionar lotes, se recalcula resumen por sucursal.
+5. Se puede generar PDF.
+6. Se puede marcar un lote como cerrado.
+
+13.5 Flujo de flota
+
+1. Se cargan catalogos.
+2. Se administran vehiculos/proveedores/tipos.
+3. Se registran cargas de combustible y gastos.
+4. Se calculan agregados por periodo.
+5. Se genera resumen mensual PDF.
+
+
+14. IMPLEMENTACION DEL ESTADO "LOTE CERRADO"
+------------------------------------------------------------
+
+Se agrego la persistencia del estado de cierre de lote usando la columna:
+
+  lotes.cerrado BOOLEAN NOT NULL DEFAULT FALSE
+
+Puntos tecnicos:
+
+- el backend la incluye en `_resumen_lotes_cte()`;
+- `GET /api/resumenes` devuelve `cerrado`;
+- `POST /api/resumenes/cerrar` actualiza ese estado;
+- el frontend lo refleja en la tabla de resumenes;
+- existe una autocreacion defensiva de la columna si falta en la base.
+
+En UI:
+
+- la fila puede pintarse distinto;
+- existe una columna visual de cierre con iconografia `🔓/🔒`;
+- la accion de cierre es persistente.
+
+
+15. OBSERVACIONES DE INGENIERIA DE SOFTWARE
+------------------------------------------------------------
+
+15.1 Fortalezas del proyecto
+
+- Cubre el flujo de negocio completo de forma muy directa.
+- La API es simple y operativamente entendible.
+- El acceso SQL es transparente, sin capas innecesarias.
+- La seguridad base por roles esta implementada en backend.
+- La UI resuelve varios procesos operativos desde una sola SPA.
+- El modulo de flota ya tiene entidad propia y capacidades avanzadas.
+
+15.2 Debilidades tecnicas
+
+- `dashboard_api.py` concentra demasiadas responsabilidades.
+- `app.component.ts` es un archivo grande con mucha logica.
+- No hay una separacion clara por bounded contexts o features.
+- No hay framework de migraciones robusto ni versionado central de esquema.
+- No se observa una capa de servicios de dominio bien desacoplada.
+- La URL del backend esta fija en frontend.
+- La base de datos se accede con SQL incrustado en un unico archivo muy grande.
+
+15.3 Riesgos de mantenimiento
+
+- una regresion en una parte del archivo backend puede afectar multiples modulos;
+- refactorizar sin tests puede romper rutas no evidentes;
+- la complejidad accidental va a seguir creciendo si se agregan features en los mismos archivos centrales.
+
+
+16. RECOMENDACIONES TECNICAS DE EVOLUCION
+------------------------------------------------------------
+
+16.1 Modularizar el backend
+
+Separar `dashboard_api.py` en:
+
+- routers/handlers por dominio,
+- repositories por dominio,
+- services de negocio,
+- builders de PDF,
+- utilidades compartidas.
+
+Ejemplo objetivo:
+
+- `backend/modules/resumenes/...`
+- `backend/modules/compras_faena/...`
+- `backend/modules/distribuciones/...`
+- `backend/modules/recepcion/...`
+- `backend/modules/flota/...`
+
+16.2 Modularizar el frontend
+
+Separar el `AppComponent` en componentes y contenedores por vista:
+
+- `dashboard-page`
+- `resumenes-page`
+- `compras-faena-page`
+- `distribuciones-page`
+- `recepcion-page`
+- `usuarios-page`
+- `flota-page`
+
+Mantener `dashboard.service.ts` o dividirlo por feature.
+
+16.3 Introducir un sistema formal de migraciones
+
+Opciones razonables:
+
+- Alembic
+- migraciones SQL versionadas con tabla de control
+
+Objetivo:
+- evitar dependencias de cambios manuales;
+- poder reproducir entornos nuevos de forma deterministica.
+
+16.4 Configuracion por entorno
+
+Mover URLs y parametros a:
+
+- environment local
+- environment produccion
+- variables de entorno del backend
+
+16.5 Tests
+
+Agregar al menos:
+
+- tests de repositorio para consultas criticas,
+- tests de reglas de autorizacion,
+- tests de componentes o de integracion frontend para flujos centrales,
+- pruebas de regresion para resumenes, compras-faena y recepcion.
+
+16.6 Observabilidad
+
+Agregar:
+
+- logging estructurado,
+- manejo mas explicito de errores,
+- trazas por endpoint,
+- auditoria de acciones importantes.
+
+
+17. COMO LEER EL CODIGO SI SE VA A MANTENER
+------------------------------------------------------------
+
+Orden recomendado de lectura para un ingeniero:
+
+1. `INICIAR.txt`
+   Para entender como levantar el entorno.
+
+2. `web/run.py`
+   Para ver el entry point.
+
+3. `web/backend/config.py`
+   Para entender parametros base.
+
+4. `web/backend/dashboard_api.py`
+   Leer primero:
+   - `main()`
+   - `DashboardHandler`
+   - `DashboardRepository._connect()`
+   - `_resumen_lotes_cte()`
+   - luego cada grupo de metodos por dominio.
+
+5. `web/frontend/src/app/services/dashboard.service.ts`
+   Para mapear contratos frontend-backend.
+
+6. `web/frontend/src/app/app.component.ts`
+   Para entender:
+   - vistas,
+   - estado,
+   - permisos,
+   - carga de datos.
+
+7. `web/frontend/src/app/app.component.html`
+   Para correlacionar el estado con la UI.
+
+
+18. INICIO OPERATIVO DEL SISTEMA
+------------------------------------------------------------
+
+Segun el archivo `INICIAR.txt`, la puesta en marcha habitual es:
+
+Backend:
+  cd C:\Users\osval\Desktop\dev\reces\resesmk13\web
+  python run.py
+
+Frontend:
+  cd C:\Users\osval\Desktop\dev\reces\resesmk13\web\frontend
+  npm start
+
+Notas operativas:
+
+- si faltan dependencias Python, instalar desde `web/backend/requirements.txt`;
+- si faltan dependencias Node, ejecutar `npm install`;
+- el backend escucha en el puerto `8008`;
+- Angular corre normalmente en el `4200`.
+
+
+19. CONCLUSION
+------------------------------------------------------------
+
+Este sistema es una aplicacion web operativa de negocio relativamente amplia, construida con una filosofia pragmatica:
+
+- frontend Angular unico,
+- backend Python simple y directo,
+- SQL manual contra PostgreSQL,
+- seguridad por sesion y roles,
+- modulos funcionales amplios en una sola interfaz.
+
+Para un ingeniero informatico o programador, el aspecto mas importante a entender es que el sistema ya contiene varias subaplicaciones dentro del mismo producto:
+
+- analitica de lotes,
+- compras/faena,
+- distribuciones,
+- recepcion,
+- usuarios,
+- flota.
+
+La base tecnica funciona y es util, pero ya esta en un punto donde la mantenibilidad futura depende de una modularizacion progresiva. El principal desafio no es "hacer que funcione", sino evitar que el crecimiento siga aumentando el acoplamiento entre UI, rutas, SQL y reglas de negocio.
+
+Si este sistema va a seguir evolucionando, la estrategia correcta es:
+
+- conservar el comportamiento actual,
+- aislar dominios,
+- formalizar migraciones,
+- agregar pruebas de regresion,
+- separar responsabilidades sin reescribir todo de golpe.
+

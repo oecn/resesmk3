@@ -1,0 +1,46 @@
+============================================================
+  COMO INICIAR EL SISTEMA
+============================================================
+
+PASO 1 - Habilitar scripts en PowerShell (solo la primera vez)
+--------------------------------------------------------------
+Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned -Force
+
+
+PASO 2 - Levantar el BACKEND (API Python)
+------------------------------------------
+cd C:\Users\osval\Desktop\dev\reces\resesmk13\web
+python run.py
+
+  -> Debe mostrar: Dashboard API read-only en http://0.0.0.0:8008
+  -> Dejar esta terminal abierta
+
+
+PASO 3 - Levantar el FRONTEND (Angular)
+-----------------------------------------
+Abrir una SEGUNDA terminal y ejecutar:
+
+cd C:\Users\osval\Desktop\dev\reces\resesmk13\web\frontend
+npm start
+
+  -> Dejar esta terminal abierta
+
+
+PASO 4 - Abrir en el navegador
+--------------------------------
+Desde esta PC:        http://127.0.0.1:4200
+Desde la red local:   http://192.168.10.12:4200
+
+
+============================================================
+  NOTAS
+============================================================
+
+- Si es la primera vez, instalar dependencias del backend:
+  pip install -r C:\Users\osval\Desktop\dev\reces\resesmk13\web\backend\requirements.txt
+
+- Si es la primera vez, instalar dependencias del frontend:
+  cd C:\Users\osval\Desktop\dev\reces\resesmk13\web\frontend
+  npm install
+
+============================================================
