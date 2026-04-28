@@ -356,6 +356,7 @@ export interface FlotaResumenRow {
   nombre: string;
   chapa?: string | null;
   sucursal?: string | null;
+  tipo?: string | null;
   mes: number;
   anho: number;
   litros: number;
@@ -392,6 +393,7 @@ export interface FlotaRankingCostoRow {
   codigo?: string | null;
   nombre: string;
   sucursal?: string | null;
+  tipo?: string | null;
   total_general: number;
   costo_por_km?: number | null;
 }

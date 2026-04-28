@@ -1252,6 +1252,14 @@ button:disabled {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.flota-history-grid .gastos-history-panel {
+  grid-column: 1 / -1;
+}
+
+.gastos-history-panel .compact-table {
+  min-width: 980px;
+}
+
 .flota-mov-grid {
   grid-template-columns: minmax(0, 1fr);
 }

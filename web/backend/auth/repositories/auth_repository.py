@@ -72,6 +72,7 @@ class AuthRepository:
     def create_session(self, user_id: int, token: str, expira_en: datetime, ip: str | None, user_agent: str | None) -> None:
         with self._connect() as conn:
             with conn.cursor() as cur:
+                self._cleanup_expired_sessions(cur)
                 cur.execute(
                     """
                     INSERT INTO sesiones (usuario_id, token, expira_en, ip, user_agent)
@@ -89,6 +90,15 @@ class AuthRepository:
                     (user_id,),
                 )
             conn.commit()
+
+    def _cleanup_expired_sessions(self, cur, retention_days: int = 30) -> None:
+        cur.execute(
+            """
+            DELETE FROM sesiones
+            WHERE expira_en < NOW() - (%s::text || ' days')::interval
+            """,
+            (int(retention_days),),
+        )
 
     def close_session(self, token: str) -> bool:
         with self._connect() as conn:

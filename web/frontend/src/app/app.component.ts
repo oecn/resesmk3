@@ -177,6 +177,12 @@ export class AppComponent implements OnInit {
   vehiculoModelo = '';
   vehiculoAnho = '';
   vehiculoTipo = '';
+  tiposVehiculo = [
+    'camion carga pesada',
+    'utilitario',
+    'Ejecutivo con apoyo operativo',
+    'generadores',
+  ];
   vehiculoSucursal = 'luque';
   vehiculoChofer = '';
   vehiculoActivo = true;

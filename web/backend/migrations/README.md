@@ -10,6 +10,9 @@ Migracion disponible:
 - `003_flota_base.sql`: crea `vehiculos`, `proveedores_flota`, `tipos_gasto_flota`, `cargas_combustible` y `gastos_flota`.
 - `003_flota_base.py`: ejecuta la migracion base del modulo de flota.
 - `004_gastos_flota_proveedor_manual.py`: agrega `proveedor_nombre` y `proveedor_ruc` a gastos de flota.
+- `007_flota_facturas_unicas.py`: evita facturas duplicadas en combustible activo y gastos de flota.
+- `008_sesiones_expiradas_cleanup.py`: agrega indice por expiracion y borra sesiones expiradas antiguas.
+- `009_menudencias_unificadas.py`: crea `menudencias` con `sucursal` y copia las tres tablas legacy.
 
 Uso recomendado:
 
@@ -39,4 +42,22 @@ Si vas a cargar gastos ocasionales con proveedor manual:
 
 ```bash
 python dashboard/migrations/004_gastos_flota_proveedor_manual.py
+```
+
+Para bloquear facturas duplicadas en flota:
+
+```bash
+python dashboard/migrations/007_flota_facturas_unicas.py
+```
+
+Para limpiar sesiones expiradas antiguas:
+
+```bash
+python dashboard/migrations/008_sesiones_expiradas_cleanup.py
+```
+
+Para unificar menudencias por sucursal:
+
+```bash
+python dashboard/migrations/009_menudencias_unificadas.py
 ```

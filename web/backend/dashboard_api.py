@@ -38,9 +38,9 @@ except Exception:
 HOST = "0.0.0.0"
 PORT = 8008
 SUCURSALES = {
-    "aregua": {"local": "AREGUA", "nombre": "Aregua", "menudencias": "menudencias_aregua"},
-    "luque": {"local": "LUQUE", "nombre": "Luque", "menudencias": "menudencias_luque"},
-    "itaugua": {"local": "ITAUGUA", "nombre": "Itaugua", "menudencias": "menudencias_itaugua"},
+    "aregua": {"local": "AREGUA", "nombre": "Aregua"},
+    "luque": {"local": "LUQUE", "nombre": "Luque"},
+    "itaugua": {"local": "ITAUGUA", "nombre": "Itaugua"},
 }
 
 
@@ -86,6 +86,10 @@ def _normalize_vehicle_import_ref(value: Any) -> str:
     text = unicodedata.normalize("NFKD", text)
     text = "".join(ch for ch in text if not unicodedata.combining(ch))
     return "".join(ch for ch in text if ch.isalnum())
+
+
+def _normalize_invoice_number(value: Any) -> str:
+    return "".join(str(value or "").strip().lower().split())
 
 
 def _normalize_combustible_product(value: Any) -> str:
@@ -299,11 +303,8 @@ class DashboardRepository:
 
     def _menudencias_union_sql(self):
         return """
-            SELECT 'Aregua' AS sucursal, fecha, producto, kg, unidades FROM menudencias_aregua
-            UNION ALL
-            SELECT 'Luque' AS sucursal, fecha, producto, kg, unidades FROM menudencias_luque
-            UNION ALL
-            SELECT 'Itaugua' AS sucursal, fecha, producto, kg, unidades FROM menudencias_itaugua
+            SELECT sucursal, fecha, producto, kg, unidades
+            FROM menudencias
         """
 
     def _costo_kg_default_ultimos_completados(self, cur):
@@ -587,13 +588,14 @@ class DashboardRepository:
                 distribuciones = cur.fetchall()
 
                 cur.execute(
-                    f"""
+                    """
                     SELECT id, fecha, producto, kg, unidades
-                    FROM {sucursal["menudencias"]}
-                    WHERE fecha = %s
+                    FROM menudencias
+                    WHERE sucursal = %s
+                      AND fecha = %s
                     ORDER BY producto, id
                     """,
-                    (fecha,),
+                    (sucursal["nombre"], fecha),
                 )
                 menudencias = cur.fetchall()
 
@@ -830,12 +832,12 @@ class DashboardRepository:
                 with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
                     self._ensure_catalogo_producto(cur, producto)
                     cur.execute(
-                        f"""
-                        INSERT INTO {sucursal["menudencias"]}(fecha, producto, kg, unidades)
-                        VALUES (%s, %s, %s, %s)
+                        """
+                        INSERT INTO menudencias(sucursal, fecha, producto, kg, unidades)
+                        VALUES (%s, %s, %s, %s, %s)
                         RETURNING id, fecha, producto, kg, unidades
                         """,
-                        (fecha, producto, kg, unidades),
+                        (sucursal["nombre"], fecha, producto, kg, unidades),
                     )
                     row = cur.fetchone()
                 conn.commit()
@@ -860,13 +862,14 @@ class DashboardRepository:
                 with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
                     self._ensure_catalogo_producto(cur, producto)
                     cur.execute(
-                        f"""
-                        UPDATE {sucursal["menudencias"]}
+                        """
+                        UPDATE menudencias
                         SET producto = %s, kg = %s, unidades = %s
                         WHERE id = %s
+                          AND sucursal = %s
                         RETURNING id, fecha, producto, kg, unidades
                         """,
-                        (producto, kg, unidades, men_id),
+                        (producto, kg, unidades, men_id, sucursal["nombre"]),
                     )
                     row = cur.fetchone()
                     if not row:
@@ -882,7 +885,10 @@ class DashboardRepository:
         with self._connect(readonly=False) as conn:
             try:
                 with conn.cursor() as cur:
-                    cur.execute(f"DELETE FROM {sucursal['menudencias']} WHERE id = %s", (int(men_id),))
+                    cur.execute(
+                        "DELETE FROM menudencias WHERE id = %s AND sucursal = %s",
+                        (int(men_id), sucursal["nombre"]),
+                    )
                     if cur.rowcount == 0:
                         raise ValueError("Menudencia no encontrada.")
                 conn.commit()
@@ -1187,6 +1193,7 @@ class DashboardRepository:
                     self._validate_flota_sucursal_scope(vehiculo, sucursal_scope)
                     self._validate_proveedor_tipo(cur, proveedor_id, "combustible")
                     self._validate_km_flota(cur, vehiculo_id, km_actual)
+                    self._validate_factura_flota_unica(cur, "cargas_combustible", nro_factura, "combustible", active_only=True)
                     cur.execute(
                         """
                         INSERT INTO cargas_combustible(
@@ -1220,6 +1227,9 @@ class DashboardRepository:
                     row["sucursal"] = vehiculo["sucursal"]
                 conn.commit()
                 return row
+            except psycopg2.errors.UniqueViolation:
+                conn.rollback()
+                raise ValueError("La factura ya esta registrada en combustible.")
             except Exception:
                 conn.rollback()
                 raise
@@ -1292,6 +1302,7 @@ class DashboardRepository:
         skipped = 0
         errors = []
         missing_vehicles: dict[str, int] = {}
+        seen_facturas: dict[str, int] = {}
 
         with self._connect(readonly=False) as conn:
             try:
@@ -1312,8 +1323,15 @@ class DashboardRepository:
                             continue
                         try:
                             mapped = self._map_combustible_import_row(row)
+                            normalized_factura = _normalize_invoice_number(mapped["nro_factura"])
+                            if normalized_factura:
+                                first_row = seen_facturas.get(normalized_factura)
+                                if first_row:
+                                    raise ValueError(f"La factura {mapped['nro_factura']} esta repetida en el archivo (fila {first_row}).")
+                                seen_facturas[normalized_factura] = row_number
                             vehiculo = self._find_vehiculo_flota_import(cur, mapped["vehiculo_ref"])
                             self._validate_flota_sucursal_scope(vehiculo, sucursal_scope)
+                            self._validate_factura_flota_unica(cur, "cargas_combustible", mapped["nro_factura"], "combustible", active_only=True)
                             semana, anho = _iso_week_parts(mapped["fecha"])
                             precio_litro = round(mapped["importe"] / mapped["litros"], 2)
                             cur.execute(
@@ -1376,6 +1394,7 @@ class DashboardRepository:
         skipped = 0
         ok_count = 0
         error_count = 0
+        seen_facturas: dict[str, int] = {}
         with self._connect(readonly=True) as conn:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
                 for row_number, row in rows:
@@ -1393,8 +1412,15 @@ class DashboardRepository:
                         continue
                     try:
                         mapped = self._map_combustible_import_row(row)
+                        normalized_factura = _normalize_invoice_number(mapped["nro_factura"])
+                        if normalized_factura:
+                            first_row = seen_facturas.get(normalized_factura)
+                            if first_row:
+                                raise ValueError(f"La factura {mapped['nro_factura']} esta repetida en el archivo (fila {first_row}).")
+                            seen_facturas[normalized_factura] = row_number
                         vehiculo = self._find_vehiculo_flota_import(cur, mapped["vehiculo_ref"])
                         self._validate_flota_sucursal_scope(vehiculo, sucursal_scope)
+                        self._validate_factura_flota_unica(cur, "cargas_combustible", mapped["nro_factura"], "combustible", active_only=True)
                         precio_litro = round(mapped["importe"] / mapped["litros"], 2)
                         items.append(
                             {
@@ -1524,8 +1550,6 @@ class DashboardRepository:
                     vehiculo = self._require_vehiculo_activo(cur, vehiculo_id)
                     self._validate_flota_sucursal_scope(vehiculo, sucursal_scope)
                     tipo = self._get_tipo_gasto_flota(cur, tipo_gasto_id)
-                    if bool(tipo["requiere_km"]) and km_actual is None:
-                        raise ValueError(f"El gasto {tipo['nombre']} requiere kilometraje.")
                     self._validate_km_flota(cur, vehiculo_id, km_actual)
                     if proveedor_id:
                         self._validate_proveedor_tipo(cur, proveedor_id, None)
@@ -1537,6 +1561,7 @@ class DashboardRepository:
                         proveedor_nombre = str(proveedor_row.get("nombre") or "")
                         if not proveedor_ruc:
                             proveedor_ruc = str(proveedor_row.get("ruc") or "")
+                    self._validate_factura_flota_unica(cur, "gastos_flota", nro_factura, "gastos de flota")
                     cur.execute(
                         """
                         INSERT INTO gastos_flota(
@@ -1573,6 +1598,9 @@ class DashboardRepository:
                     row["proveedor_ruc"] = proveedor_ruc
                 conn.commit()
                 return row
+            except psycopg2.errors.UniqueViolation:
+                conn.rollback()
+                raise ValueError("La factura ya esta registrada en gastos de flota.")
             except Exception:
                 conn.rollback()
                 raise
@@ -1635,6 +1663,7 @@ class DashboardRepository:
                            v.nombre,
                            v.chapa,
                            v.sucursal,
+                           v.tipo,
                            w.mes,
                            w.anho,
                            w.litros,
@@ -1757,6 +1786,7 @@ class DashboardRepository:
                     "codigo": item["codigo"],
                     "nombre": item["nombre"],
                     "sucursal": item.get("sucursal"),
+                    "tipo": item.get("tipo"),
                     "total_general": item.get("total_general"),
                     "costo_por_km": item.get("costo_por_km"),
                 }
@@ -1831,6 +1861,9 @@ class DashboardRepository:
             filters_applied.append(f"Vehiculo ID: {int(vehiculo_id)}")
         filter_text = " | ".join(filters_applied) if filters_applied else "Sin filtros adicionales"
 
+        def fmt_gs(value, dec=0):
+            return f"Gs. {_fmt_float(value, dec)}"
+
         styles = getSampleStyleSheet()
         title_style = ParagraphStyle(
             "FlotaMonthlyTypeTitle",
@@ -1858,6 +1891,22 @@ class DashboardRepository:
             spaceBefore=0,
             spaceAfter=2,
         )
+        subtotal_style = ParagraphStyle(
+            "FlotaMonthlyTypeSubtotal",
+            parent=styles["Normal"],
+            fontName="Courier-Bold",
+            fontSize=7,
+            leading=8,
+            alignment=1,
+            spaceBefore=0,
+            spaceAfter=0,
+        )
+        subtotal_label_style = ParagraphStyle(
+            "FlotaMonthlyTypeSubtotalLabel",
+            parent=subtotal_style,
+            alignment=0,
+            wordWrap="CJK",
+        )
         kpi_value_style = ParagraphStyle(
             "FlotaMonthlyTypeKpiValue",
             parent=styles["Normal"],
@@ -1876,9 +1925,9 @@ class DashboardRepository:
             self._pdf_wrap_cell_typewriter("Monto total", align="CENTER", font_size=8, leading=9),
         ], [
             Paragraph(_fmt_int(totales.get("vehiculos", 0)), kpi_value_style),
-            Paragraph(_fmt_float(totales.get("combustible_total", 0), 0), kpi_value_style),
-            Paragraph(_fmt_float(totales.get("otros_gastos", 0), 0), kpi_value_style),
-            Paragraph(_fmt_float(totales.get("total_general", 0), 0), kpi_value_style),
+            Paragraph(fmt_gs(totales.get("combustible_total", 0)), kpi_value_style),
+            Paragraph(fmt_gs(totales.get("otros_gastos", 0)), kpi_value_style),
+            Paragraph(fmt_gs(totales.get("total_general", 0)), kpi_value_style),
         ]]
 
         story = [
@@ -1900,9 +1949,9 @@ class DashboardRepository:
             data_sucursal.append([
                 sucursal_meta["nombre"] if sucursal_meta else (sucursal_slug or "Sin sucursal"),
                 _fmt_int(row.get("vehiculos", 0)),
-                _fmt_float(row.get("combustible_total", 0), 0),
-                _fmt_float(row.get("otros_gastos", 0), 0),
-                _fmt_float(row.get("total_general", 0), 0),
+                fmt_gs(row.get("combustible_total", 0)),
+                fmt_gs(row.get("otros_gastos", 0)),
+                fmt_gs(row.get("total_general", 0)),
             ])
         if len(data_sucursal) == 1:
             data_sucursal.append(["Sin datos", "0", "0", "0", "0"])
@@ -1911,23 +1960,87 @@ class DashboardRepository:
         story.append(self._build_table_compact_typewriter(data_sucursal, col_widths=[120, 80, 120, 120, 120]))
         story.append(Spacer(0, 8))
 
-        data_vehiculos = [["Sucursal", "Vehiculo", "Monto combustible", "Gastos", "Monto total", "Litros"]]
-        for row in items:
-            sucursal_slug = str(row.get("sucursal") or "").strip().lower()
-            sucursal_meta = SUCURSALES.get(sucursal_slug)
-            data_vehiculos.append([
-                sucursal_meta["nombre"] if sucursal_meta else (sucursal_slug or "Sin sucursal"),
-                self._pdf_wrap_cell_typewriter(self._vehiculo_flota_label(row), align="LEFT", font_size=7, leading=8),
-                _fmt_float(row.get("combustible_total", 0), 0),
-                _fmt_float(row.get("otros_gastos", 0), 0),
-                _fmt_float(row.get("total_general", 0), 0),
-                _fmt_float(row.get("litros", 0), 2),
-            ])
-        if len(data_vehiculos) == 1:
-            data_vehiculos.append(["Sin datos", "-", "0", "0", "0", "0,00"])
+        def sucursal_label(value):
+            slug = str(value or "").strip().lower()
+            meta = SUCURSALES.get(slug)
+            return meta["nombre"] if meta else (slug or "Sin sucursal")
 
-        story.append(Paragraph("<b>Detalle por vehiculo</b>", heading_style))
-        story.append(self._build_table_compact_typewriter(data_vehiculos, col_widths=[88, 210, 95, 80, 80, 60]))
+        def tipo_label(value):
+            return str(value or "").strip() or "Sin tipo"
+
+        resumen_tipo = []
+        for row in items:
+            sucursal_name = sucursal_label(row.get("sucursal"))
+            tipo_name = tipo_label(row.get("tipo"))
+            found = next((item for item in resumen_tipo if item["tipo"] == tipo_name), None)
+            if not found:
+                found = {
+                    "tipo": tipo_name,
+                    "sucursales": set(),
+                    "vehiculos": 0,
+                    "litros": 0.0,
+                    "combustible_total": 0.0,
+                    "otros_gastos": 0.0,
+                    "total_general": 0.0,
+                }
+                resumen_tipo.append(found)
+            found["sucursales"].add(sucursal_name)
+            found["vehiculos"] += 1
+            found["litros"] += float(row.get("litros") or 0)
+            found["combustible_total"] += float(row.get("combustible_total") or 0)
+            found["otros_gastos"] += float(row.get("otros_gastos") or 0)
+            found["total_general"] += float(row.get("total_general") or 0)
+
+        data_tipo = [["Tipo de vehiculo", "Sucursales", "Vehiculos", "Combustible", "Gastos", "Monto total", "Litros"]]
+        for row in sorted(resumen_tipo, key=lambda item: item["tipo"]):
+            data_tipo.append([
+                self._pdf_wrap_cell_typewriter(row["tipo"], align="LEFT", font_size=7, leading=8),
+                _fmt_int(len(row["sucursales"])),
+                _fmt_int(row["vehiculos"]),
+                fmt_gs(row["combustible_total"]),
+                fmt_gs(row["otros_gastos"]),
+                fmt_gs(row["total_general"]),
+                _fmt_float(row["litros"], 2),
+            ])
+        if len(data_tipo) == 1:
+            data_tipo.append(["Sin datos", "0", "0", "0", "0", "0", "0,00"])
+
+        story.append(Paragraph("<b>Resumen por tipo de vehiculo</b>", heading_style))
+        story.append(self._build_table_compact_typewriter(data_tipo, col_widths=[185, 65, 65, 95, 75, 85, 60]))
+
+        story.append(Spacer(0, 8))
+        story.append(Paragraph("<b>Detalle por tipo de vehiculo</b>", heading_style))
+        grouped_items: dict[tuple[str, str], list[dict[str, Any]]] = {}
+        for row in items:
+            key = (tipo_label(row.get("tipo")), sucursal_label(row.get("sucursal")))
+            grouped_items.setdefault(key, []).append(row)
+
+        if not grouped_items:
+            story.append(self._build_table_compact_typewriter([["Tipo", "Sucursal", "Vehiculo", "Combustible", "Gastos", "Monto total", "Litros"], ["Sin datos", "-", "-", "0", "0", "0", "0,00"]], col_widths=[120, 80, 180, 90, 70, 75, 55]))
+        for (tipo_name, sucursal_name), rows in sorted(grouped_items.items(), key=lambda item: (item[0][0], item[0][1])):
+            subtotal_combustible = sum(float(row.get("combustible_total") or 0) for row in rows)
+            subtotal_gastos = sum(float(row.get("otros_gastos") or 0) for row in rows)
+            subtotal_total = sum(float(row.get("total_general") or 0) for row in rows)
+            subtotal_litros = sum(float(row.get("litros") or 0) for row in rows)
+            story.append(Spacer(0, 5))
+            story.append(Paragraph(f"<b>{escape(tipo_name)} - {escape(sucursal_name)}</b>", body_style))
+            data_vehiculos = [["Vehiculo", "Monto combustible", "Gastos", "Monto total", "Litros"]]
+            for row in sorted(rows, key=lambda item: float(item.get("total_general") or 0), reverse=True):
+                data_vehiculos.append([
+                    self._pdf_wrap_cell_typewriter(self._vehiculo_flota_label(row), align="LEFT", font_size=7, leading=8),
+                    fmt_gs(row.get("combustible_total", 0)),
+                    fmt_gs(row.get("otros_gastos", 0)),
+                    fmt_gs(row.get("total_general", 0)),
+                    _fmt_float(row.get("litros", 0), 2),
+                ])
+            data_vehiculos.append([
+                Paragraph("Subtotal", subtotal_label_style),
+                Paragraph(fmt_gs(subtotal_combustible), subtotal_style),
+                Paragraph(fmt_gs(subtotal_gastos), subtotal_style),
+                Paragraph(fmt_gs(subtotal_total), subtotal_style),
+                Paragraph(_fmt_float(subtotal_litros, 2), subtotal_style),
+            ])
+            story.append(self._build_table_compact_typewriter(data_vehiculos, col_widths=[300, 110, 80, 85, 65]))
 
         if ranking:
             story.append(Spacer(0, 8))
@@ -1939,8 +2052,8 @@ class DashboardRepository:
                 data_ranking.append([
                     self._pdf_wrap_cell_typewriter(self._vehiculo_flota_label(row), align="LEFT", font_size=7, leading=8),
                     sucursal_meta["nombre"] if sucursal_meta else (sucursal_slug or "Sin sucursal"),
-                    _fmt_float(row.get("total_general", 0), 0),
-                    _fmt_float(costo_por_km, 2) if costo_por_km is not None else "-",
+                    fmt_gs(row.get("total_general", 0)),
+                    fmt_gs(costo_por_km, 2) if costo_por_km is not None else "-",
                 ])
             story.append(Paragraph("<b>Ranking de costo</b>", heading_style))
             story.append(self._build_table_compact_typewriter(data_ranking, col_widths=[250, 100, 100, 90]))
@@ -1955,7 +2068,7 @@ class DashboardRepository:
                     str(row.get("fecha") or ""),
                     self._pdf_wrap_cell_typewriter(self._vehiculo_flota_label(row), align="LEFT", font_size=7, leading=8),
                     _fmt_float(row.get("litros", 0), 2),
-                    _fmt_float(row.get("importe", 0), 0),
+                    fmt_gs(row.get("importe", 0)),
                     str(row.get("nro_factura") or "-"),
                     self._pdf_wrap_cell_typewriter(str(row.get("motivo_eliminacion") or "-"), align="LEFT", font_size=7, leading=8),
                     str(row.get("eliminado_por") or "-"),
@@ -2032,6 +2145,30 @@ class DashboardRepository:
         if not row or not bool(row["activo"]):
             raise ValueError("Tipo de gasto no disponible.")
         return row
+
+    def _validate_factura_flota_unica(self, cur, table_name: str, nro_factura: str, label: str, active_only: bool = False):
+        normalized = _normalize_invoice_number(nro_factura)
+        if not normalized:
+            return
+        if table_name not in {"cargas_combustible", "gastos_flota"}:
+            raise ValueError("Tabla de factura invalida.")
+        filters = [
+            "LOWER(REGEXP_REPLACE(BTRIM(COALESCE(nro_factura, '')), '[[:space:]]+', '', 'g')) = %s",
+        ]
+        if active_only:
+            filters.append("eliminado_en IS NULL")
+        cur.execute(
+            f"""
+            SELECT id
+            FROM {table_name}
+            WHERE {" AND ".join(filters)}
+            LIMIT 1
+            """,
+            (normalized,),
+        )
+        row = cur.fetchone()
+        if row:
+            raise ValueError(f"La factura {nro_factura} ya esta registrada en {label}.")
 
     def _validate_km_flota(self, cur, vehiculo_id, km_actual):
         if km_actual is None:
