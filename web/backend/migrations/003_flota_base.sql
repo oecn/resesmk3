@@ -67,20 +67,35 @@ CREATE TABLE IF NOT EXISTS gastos_flota (
     semana INTEGER NOT NULL,
     anho INTEGER NOT NULL,
     cargado_por TEXT,
-    creado_en TIMESTAMP NOT NULL DEFAULT NOW()
+    creado_en TIMESTAMP NOT NULL DEFAULT NOW(),
+    eliminado_en TIMESTAMP NULL,
+    eliminado_por TEXT NULL,
+    motivo_eliminacion TEXT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_vehiculos_sucursal ON vehiculos(sucursal);
 CREATE INDEX IF NOT EXISTS idx_cargas_combustible_fecha ON cargas_combustible(fecha DESC);
 CREATE INDEX IF NOT EXISTS idx_cargas_combustible_vehiculo_semana ON cargas_combustible(vehiculo_id, anho, semana);
-CREATE UNIQUE INDEX IF NOT EXISTS uq_cargas_combustible_nro_factura_activa
-    ON cargas_combustible (LOWER(REGEXP_REPLACE(BTRIM(COALESCE(nro_factura, '')), '[[:space:]]+', '', 'g')))
+CREATE UNIQUE INDEX IF NOT EXISTS uq_cargas_combustible_proveedor_factura_activa
+    ON cargas_combustible (
+        COALESCE(proveedor_id, 0),
+        LOWER(REGEXP_REPLACE(BTRIM(COALESCE(nro_factura, '')), '[[:space:]]+', '', 'g'))
+    )
     WHERE nro_factura IS NOT NULL AND BTRIM(nro_factura) <> '' AND eliminado_en IS NULL;
 CREATE INDEX IF NOT EXISTS idx_gastos_flota_fecha ON gastos_flota(fecha DESC);
 CREATE INDEX IF NOT EXISTS idx_gastos_flota_vehiculo_semana ON gastos_flota(vehiculo_id, anho, semana);
-CREATE UNIQUE INDEX IF NOT EXISTS uq_gastos_flota_nro_factura
-    ON gastos_flota (LOWER(REGEXP_REPLACE(BTRIM(COALESCE(nro_factura, '')), '[[:space:]]+', '', 'g')))
-    WHERE nro_factura IS NOT NULL AND BTRIM(nro_factura) <> '';
+CREATE UNIQUE INDEX IF NOT EXISTS uq_gastos_flota_proveedor_factura_activa
+    ON gastos_flota (
+        (
+            CASE
+                WHEN proveedor_id IS NOT NULL THEN 'id:' || proveedor_id::text
+                WHEN BTRIM(COALESCE(proveedor_ruc, '')) <> '' THEN 'ruc:' || LOWER(REGEXP_REPLACE(BTRIM(COALESCE(proveedor_ruc, '')), '[[:space:]]+', '', 'g'))
+                ELSE 'nombre:' || LOWER(REGEXP_REPLACE(BTRIM(COALESCE(proveedor_nombre, '')), '[[:space:]]+', '', 'g'))
+            END
+        ),
+        LOWER(REGEXP_REPLACE(BTRIM(COALESCE(nro_factura, '')), '[[:space:]]+', '', 'g'))
+    )
+    WHERE nro_factura IS NOT NULL AND BTRIM(nro_factura) <> '' AND eliminado_en IS NULL;
 
 INSERT INTO tipos_gasto_flota (nombre, requiere_km, activo)
 VALUES

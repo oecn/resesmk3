@@ -251,6 +251,24 @@ class DashboardRepository:
                     ADD COLUMN IF NOT EXISTS motivo_eliminacion TEXT NULL
                     """
                 )
+                cur.execute(
+                    """
+                    ALTER TABLE gastos_flota
+                    ADD COLUMN IF NOT EXISTS eliminado_en TIMESTAMP NULL
+                    """
+                )
+                cur.execute(
+                    """
+                    ALTER TABLE gastos_flota
+                    ADD COLUMN IF NOT EXISTS eliminado_por TEXT NULL
+                    """
+                )
+                cur.execute(
+                    """
+                    ALTER TABLE gastos_flota
+                    ADD COLUMN IF NOT EXISTS motivo_eliminacion TEXT NULL
+                    """
+                )
             conn.commit()
         self._schema_ready = True
 
@@ -1193,7 +1211,7 @@ class DashboardRepository:
                     self._validate_flota_sucursal_scope(vehiculo, sucursal_scope)
                     self._validate_proveedor_tipo(cur, proveedor_id, "combustible")
                     self._validate_km_flota(cur, vehiculo_id, km_actual)
-                    self._validate_factura_flota_unica(cur, "cargas_combustible", nro_factura, "combustible", active_only=True)
+                    self._validate_factura_combustible_unica(cur, proveedor_id, nro_factura)
                     cur.execute(
                         """
                         INSERT INTO cargas_combustible(
@@ -1325,13 +1343,14 @@ class DashboardRepository:
                             mapped = self._map_combustible_import_row(row)
                             normalized_factura = _normalize_invoice_number(mapped["nro_factura"])
                             if normalized_factura:
-                                first_row = seen_facturas.get(normalized_factura)
+                                factura_key = f"{proveedor_id or 0}:{normalized_factura}"
+                                first_row = seen_facturas.get(factura_key)
                                 if first_row:
                                     raise ValueError(f"La factura {mapped['nro_factura']} esta repetida en el archivo (fila {first_row}).")
-                                seen_facturas[normalized_factura] = row_number
+                                seen_facturas[factura_key] = row_number
                             vehiculo = self._find_vehiculo_flota_import(cur, mapped["vehiculo_ref"])
                             self._validate_flota_sucursal_scope(vehiculo, sucursal_scope)
-                            self._validate_factura_flota_unica(cur, "cargas_combustible", mapped["nro_factura"], "combustible", active_only=True)
+                            self._validate_factura_combustible_unica(cur, proveedor_id, mapped["nro_factura"])
                             semana, anho = _iso_week_parts(mapped["fecha"])
                             precio_litro = round(mapped["importe"] / mapped["litros"], 2)
                             cur.execute(
@@ -1383,6 +1402,8 @@ class DashboardRepository:
     def preview_cargas_combustible_import(self, payload, sucursal_scope=None):
         file_name = str(payload.get("file_name") or "").strip()
         file_content = str(payload.get("file_content") or "").strip()
+        proveedor_id = payload.get("proveedor_id")
+        proveedor_id = int(proveedor_id) if str(proveedor_id or "").strip() else None
         if not file_name or not file_content:
             raise ValueError("Debes adjuntar un archivo CSV o XLSX.")
 
@@ -1397,6 +1418,7 @@ class DashboardRepository:
         seen_facturas: dict[str, int] = {}
         with self._connect(readonly=True) as conn:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                self._validate_proveedor_tipo(cur, proveedor_id, "combustible")
                 for row_number, row in rows:
                     if not any(str(value or "").strip() for value in row.values()):
                         skipped += 1
@@ -1414,13 +1436,14 @@ class DashboardRepository:
                         mapped = self._map_combustible_import_row(row)
                         normalized_factura = _normalize_invoice_number(mapped["nro_factura"])
                         if normalized_factura:
-                            first_row = seen_facturas.get(normalized_factura)
+                            factura_key = f"{proveedor_id or 0}:{normalized_factura}"
+                            first_row = seen_facturas.get(factura_key)
                             if first_row:
                                 raise ValueError(f"La factura {mapped['nro_factura']} esta repetida en el archivo (fila {first_row}).")
-                            seen_facturas[normalized_factura] = row_number
+                            seen_facturas[factura_key] = row_number
                         vehiculo = self._find_vehiculo_flota_import(cur, mapped["vehiculo_ref"])
                         self._validate_flota_sucursal_scope(vehiculo, sucursal_scope)
-                        self._validate_factura_flota_unica(cur, "cargas_combustible", mapped["nro_factura"], "combustible", active_only=True)
+                        self._validate_factura_combustible_unica(cur, proveedor_id, mapped["nro_factura"])
                         precio_litro = round(mapped["importe"] / mapped["litros"], 2)
                         items.append(
                             {
@@ -1505,7 +1528,10 @@ class DashboardRepository:
                            g.semana,
                            g.anho,
                            g.cargado_por,
-                           g.creado_en
+                           g.creado_en,
+                           g.eliminado_en,
+                           COALESCE(g.eliminado_por, '') AS eliminado_por,
+                           COALESCE(g.motivo_eliminacion, '') AS motivo_eliminacion
                     FROM gastos_flota g
                     JOIN vehiculos v ON v.id = g.vehiculo_id
                     JOIN tipos_gasto_flota tg ON tg.id = g.tipo_gasto_id
@@ -1519,7 +1545,9 @@ class DashboardRepository:
                 rows = cur.fetchall()
         return {"items": rows}
 
-    def save_gasto_flota(self, payload, cargado_por=None, sucursal_scope=None):
+    def save_gasto_flota(self, payload, cargado_por=None, sucursal_scope=None, user_role=None):
+        gasto_id = payload.get("id")
+        gasto_id = int(gasto_id) if str(gasto_id or "").strip() else None
         fecha = _parse_date(payload.get("fecha"))
         vehiculo_id = int(payload.get("vehiculo_id") or 0)
         tipo_gasto_id = int(payload.get("tipo_gasto_id") or 0)
@@ -1549,6 +1577,8 @@ class DashboardRepository:
                 with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
                     vehiculo = self._require_vehiculo_activo(cur, vehiculo_id)
                     self._validate_flota_sucursal_scope(vehiculo, sucursal_scope)
+                    if gasto_id:
+                        self._validate_gasto_flota_editable(cur, gasto_id, user_role, sucursal_scope)
                     tipo = self._get_tipo_gasto_flota(cur, tipo_gasto_id)
                     self._validate_km_flota(cur, vehiculo_id, km_actual)
                     if proveedor_id:
@@ -1561,34 +1591,74 @@ class DashboardRepository:
                         proveedor_nombre = str(proveedor_row.get("nombre") or "")
                         if not proveedor_ruc:
                             proveedor_ruc = str(proveedor_row.get("ruc") or "")
-                    self._validate_factura_flota_unica(cur, "gastos_flota", nro_factura, "gastos de flota")
-                    cur.execute(
-                        """
-                        INSERT INTO gastos_flota(
-                            vehiculo_id, fecha, tipo_gasto_id, proveedor_id, importe, km_actual,
-                            nro_factura, detalle, semana, anho, cargado_por, proveedor_nombre, proveedor_ruc
+                    self._validate_factura_gasto_unica(cur, proveedor_id, proveedor_nombre, proveedor_ruc, nro_factura, exclude_id=gasto_id)
+                    if gasto_id:
+                        cur.execute(
+                            """
+                            UPDATE gastos_flota
+                            SET vehiculo_id = %s,
+                                fecha = %s,
+                                tipo_gasto_id = %s,
+                                proveedor_id = %s,
+                                importe = %s,
+                                km_actual = %s,
+                                nro_factura = %s,
+                                detalle = %s,
+                                semana = %s,
+                                anho = %s,
+                                proveedor_nombre = %s,
+                                proveedor_ruc = %s
+                            WHERE id = %s
+                              AND eliminado_en IS NULL
+                            RETURNING id, fecha, vehiculo_id, tipo_gasto_id, proveedor_id, importe, km_actual,
+                                      nro_factura, detalle, semana, anho, cargado_por, creado_en, proveedor_nombre, proveedor_ruc
+                            """,
+                            (
+                                vehiculo_id,
+                                fecha,
+                                tipo_gasto_id,
+                                proveedor_id,
+                                importe,
+                                km_actual,
+                                nro_factura,
+                                detalle,
+                                semana,
+                                anho,
+                                proveedor_nombre or None,
+                                proveedor_ruc or None,
+                                gasto_id,
+                            ),
                         )
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                        RETURNING id, fecha, vehiculo_id, tipo_gasto_id, proveedor_id, importe, km_actual,
-                                  nro_factura, detalle, semana, anho, cargado_por, creado_en, proveedor_nombre, proveedor_ruc
-                        """,
-                        (
-                            vehiculo_id,
-                            fecha,
-                            tipo_gasto_id,
-                            proveedor_id,
-                            importe,
-                            km_actual,
-                            nro_factura,
-                            detalle,
-                            semana,
-                            anho,
-                            str(cargado_por or "").strip() or None,
-                            proveedor_nombre or None,
-                            proveedor_ruc or None,
-                        ),
-                    )
+                    else:
+                        cur.execute(
+                            """
+                            INSERT INTO gastos_flota(
+                                vehiculo_id, fecha, tipo_gasto_id, proveedor_id, importe, km_actual,
+                                nro_factura, detalle, semana, anho, cargado_por, proveedor_nombre, proveedor_ruc
+                            )
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                            RETURNING id, fecha, vehiculo_id, tipo_gasto_id, proveedor_id, importe, km_actual,
+                                      nro_factura, detalle, semana, anho, cargado_por, creado_en, proveedor_nombre, proveedor_ruc
+                            """,
+                            (
+                                vehiculo_id,
+                                fecha,
+                                tipo_gasto_id,
+                                proveedor_id,
+                                importe,
+                                km_actual,
+                                nro_factura,
+                                detalle,
+                                semana,
+                                anho,
+                                str(cargado_por or "").strip() or None,
+                                proveedor_nombre or None,
+                                proveedor_ruc or None,
+                            ),
+                        )
                     row = cur.fetchone()
+                    if not row:
+                        raise ValueError("Gasto no encontrado.")
                     row["vehiculo_nombre"] = vehiculo["nombre"]
                     row["vehiculo_codigo"] = vehiculo["codigo"]
                     row["chapa"] = vehiculo["chapa"]
@@ -1601,6 +1671,63 @@ class DashboardRepository:
             except psycopg2.errors.UniqueViolation:
                 conn.rollback()
                 raise ValueError("La factura ya esta registrada en gastos de flota.")
+            except Exception:
+                conn.rollback()
+                raise
+
+    def _validate_gasto_flota_editable(self, cur, gasto_id, user_role=None, sucursal_scope=None):
+        cur.execute(
+            """
+            SELECT g.id,
+                   g.creado_en,
+                   g.eliminado_en,
+                   v.sucursal
+            FROM gastos_flota g
+            JOIN vehiculos v ON v.id = g.vehiculo_id
+            WHERE g.id = %s
+            """,
+            (int(gasto_id),),
+        )
+        row = cur.fetchone()
+        if not row:
+            raise ValueError("El gasto no existe.")
+        self._validate_flota_sucursal_scope(row, sucursal_scope)
+        if row.get("eliminado_en"):
+            raise ValueError("El gasto ya fue eliminado.")
+        if str(user_role or "").strip().lower() == "recepcion":
+            cur.execute("SELECT %s::timestamp >= NOW() - INTERVAL '2 days' AS editable", (row["creado_en"],))
+            editable = bool((cur.fetchone() or {}).get("editable"))
+            if not editable:
+                raise PermissionDenied("Recepcion solo puede editar o eliminar gastos creados en los ultimos 2 dias.")
+        return row
+
+    def delete_gasto_flota(self, payload, eliminado_por=None, sucursal_scope=None, user_role=None):
+        gasto_id = _parse_int(payload.get("id") or 0)
+        motivo = str(payload.get("motivo") or "").strip()
+
+        if gasto_id <= 0:
+            raise ValueError("Falta el id del gasto.")
+        if not motivo:
+            raise ValueError("Debes indicar el motivo de eliminacion.")
+
+        with self._connect(readonly=False) as conn:
+            try:
+                with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                    self._validate_gasto_flota_editable(cur, gasto_id, user_role, sucursal_scope)
+                    cur.execute(
+                        """
+                        UPDATE gastos_flota
+                        SET eliminado_en = NOW(),
+                            eliminado_por = %s,
+                            motivo_eliminacion = %s
+                        WHERE id = %s
+                        RETURNING id, eliminado_en, COALESCE(eliminado_por, '') AS eliminado_por, COALESCE(motivo_eliminacion, '') AS motivo_eliminacion
+                        """,
+                        (str(eliminado_por or "").strip() or None, motivo, gasto_id),
+                    )
+                    deleted = cur.fetchone()
+                conn.commit()
+                return {"ok": True, "item": deleted}
             except Exception:
                 conn.rollback()
                 raise
@@ -1641,6 +1768,7 @@ class DashboardRepository:
                                anho,
                                COALESCE(SUM(importe), 0)::numeric AS otros_gastos
                         FROM gastos_flota
+                        WHERE eliminado_en IS NULL
                         GROUP BY vehiculo_id, EXTRACT(MONTH FROM fecha), anho
                     ),
                     week_data AS (
@@ -1709,6 +1837,7 @@ class DashboardRepository:
                         gastos AS (
                             SELECT vehiculo_id, EXTRACT(MONTH FROM fecha)::int AS mes, anho, COALESCE(SUM(importe), 0)::numeric AS otros_gastos
                             FROM gastos_flota
+                            WHERE eliminado_en IS NULL
                             GROUP BY vehiculo_id, EXTRACT(MONTH FROM fecha), anho
                         ),
                         week_data AS (
@@ -2146,29 +2275,68 @@ class DashboardRepository:
             raise ValueError("Tipo de gasto no disponible.")
         return row
 
-    def _validate_factura_flota_unica(self, cur, table_name: str, nro_factura: str, label: str, active_only: bool = False):
+    def _validate_factura_combustible_unica(self, cur, proveedor_id, nro_factura: str, exclude_id=None):
         normalized = _normalize_invoice_number(nro_factura)
         if not normalized:
             return
-        if table_name not in {"cargas_combustible", "gastos_flota"}:
-            raise ValueError("Tabla de factura invalida.")
         filters = [
             "LOWER(REGEXP_REPLACE(BTRIM(COALESCE(nro_factura, '')), '[[:space:]]+', '', 'g')) = %s",
+            "COALESCE(proveedor_id, 0) = %s",
+            "eliminado_en IS NULL",
         ]
-        if active_only:
-            filters.append("eliminado_en IS NULL")
+        if exclude_id:
+            filters.append("id <> %s")
         cur.execute(
             f"""
             SELECT id
-            FROM {table_name}
+            FROM cargas_combustible
             WHERE {" AND ".join(filters)}
             LIMIT 1
             """,
-            (normalized,),
+            (normalized, int(proveedor_id or 0), int(exclude_id)) if exclude_id else (normalized, int(proveedor_id or 0)),
         )
         row = cur.fetchone()
         if row:
-            raise ValueError(f"La factura {nro_factura} ya esta registrada en {label}.")
+            raise ValueError(f"La factura {nro_factura} ya esta registrada para ese proveedor de combustible.")
+
+    def _validate_factura_gasto_unica(self, cur, proveedor_id, proveedor_nombre: str, proveedor_ruc: str, nro_factura: str, exclude_id=None):
+        normalized = _normalize_invoice_number(nro_factura)
+        if not normalized:
+            return
+        provider_key = self._gasto_factura_provider_key(proveedor_id, proveedor_nombre, proveedor_ruc)
+        filters = [
+            "LOWER(REGEXP_REPLACE(BTRIM(COALESCE(nro_factura, '')), '[[:space:]]+', '', 'g')) = %s",
+            """
+            CASE
+                WHEN proveedor_id IS NOT NULL THEN 'id:' || proveedor_id::text
+                WHEN BTRIM(COALESCE(proveedor_ruc, '')) <> '' THEN 'ruc:' || LOWER(REGEXP_REPLACE(BTRIM(COALESCE(proveedor_ruc, '')), '[[:space:]]+', '', 'g'))
+                ELSE 'nombre:' || LOWER(REGEXP_REPLACE(BTRIM(COALESCE(proveedor_nombre, '')), '[[:space:]]+', '', 'g'))
+            END = %s
+            """,
+            "eliminado_en IS NULL",
+        ]
+        if exclude_id:
+            filters.append("id <> %s")
+        cur.execute(
+            f"""
+            SELECT id
+            FROM gastos_flota
+            WHERE {" AND ".join(filters)}
+            LIMIT 1
+            """,
+            (normalized, provider_key, int(exclude_id)) if exclude_id else (normalized, provider_key),
+        )
+        row = cur.fetchone()
+        if row:
+            raise ValueError(f"La factura {nro_factura} ya esta registrada para ese proveedor en gastos de flota.")
+
+    def _gasto_factura_provider_key(self, proveedor_id, proveedor_nombre: str, proveedor_ruc: str) -> str:
+        if proveedor_id:
+            return f"id:{int(proveedor_id)}"
+        normalized_ruc = _normalize_invoice_number(proveedor_ruc)
+        if normalized_ruc:
+            return f"ruc:{normalized_ruc}"
+        return f"nombre:{_normalize_invoice_number(proveedor_nombre)}"
 
     def _validate_km_flota(self, cur, vehiculo_id, km_actual):
         if km_actual is None:
@@ -2178,11 +2346,11 @@ class DashboardRepository:
             WITH historial AS (
                 SELECT km_actual
                 FROM cargas_combustible
-                WHERE vehiculo_id = %s AND km_actual IS NOT NULL
+                WHERE vehiculo_id = %s AND km_actual IS NOT NULL AND eliminado_en IS NULL
                 UNION ALL
                 SELECT km_actual
                 FROM gastos_flota
-                WHERE vehiculo_id = %s AND km_actual IS NOT NULL
+                WHERE vehiculo_id = %s AND km_actual IS NOT NULL AND eliminado_en IS NULL
             )
             SELECT MAX(km_actual) AS ultimo_km
             FROM historial
@@ -3470,7 +3638,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     status=201,
                 )
             if parsed.path == "/api/flota/vehiculos":
-                self._require_roles({"admin", "supervisor", "recepcion"})
+                self._require_roles({"admin", "supervisor"})
                 sucursal_scope = self._get_flota_sucursal_scope(payload.get("sucursal"))
                 return self._send_json(
                     self.repo.save_vehiculo(payload, sucursal_scope=sucursal_scope),
@@ -3510,8 +3678,14 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 user = self._require_roles({"admin", "supervisor", "recepcion"})
                 sucursal_scope = self._get_flota_sucursal_scope()
                 return self._send_json(
-                    self.repo.save_gasto_flota(payload, cargado_por=user.get("username"), sucursal_scope=sucursal_scope),
-                    status=201,
+                    self.repo.save_gasto_flota(payload, cargado_por=user.get("username"), sucursal_scope=sucursal_scope, user_role=user.get("rol")),
+                    status=201 if not payload.get("id") else 200,
+                )
+            if parsed.path == "/api/flota/gastos/eliminar":
+                user = self._require_roles({"admin", "supervisor", "recepcion"})
+                sucursal_scope = self._get_flota_sucursal_scope()
+                return self._send_json(
+                    self.repo.delete_gasto_flota(payload, eliminado_por=user.get("username"), sucursal_scope=sucursal_scope, user_role=user.get("rol"))
                 )
             if parsed.path == "/api/compras-faena/lotes":
                 self._require_roles({"admin", "supervisor"})
@@ -3569,7 +3743,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 self.auth.update_admin_password(payload.get("id"), payload.get("password"))
                 return self._send_json({"ok": True})
             if parsed.path == "/api/flota/vehiculos":
-                self._require_roles({"admin", "supervisor", "recepcion"})
+                self._require_roles({"admin", "supervisor"})
                 sucursal_scope = self._get_flota_sucursal_scope(payload.get("sucursal"))
                 return self._send_json(self.repo.save_vehiculo(payload, sucursal_scope=sucursal_scope))
             if parsed.path == "/api/flota/proveedores":

@@ -13,6 +13,8 @@ Migracion disponible:
 - `007_flota_facturas_unicas.py`: evita facturas duplicadas en combustible activo y gastos de flota.
 - `008_sesiones_expiradas_cleanup.py`: agrega indice por expiracion y borra sesiones expiradas antiguas.
 - `009_menudencias_unificadas.py`: crea `menudencias` con `sucursal` y copia las tres tablas legacy.
+- `010_gastos_flota_soft_delete.py`: agrega eliminacion logica a gastos de flota.
+- `011_facturas_por_proveedor.py`: cambia validacion unica de facturas a proveedor + factura.
 
 Uso recomendado:
 
@@ -60,4 +62,16 @@ Para unificar menudencias por sucursal:
 
 ```bash
 python dashboard/migrations/009_menudencias_unificadas.py
+```
+
+Para habilitar eliminacion logica de gastos de flota:
+
+```bash
+python dashboard/migrations/010_gastos_flota_soft_delete.py
+```
+
+Para validar facturas duplicadas por proveedor:
+
+```bash
+python dashboard/migrations/011_facturas_por_proveedor.py
 ```

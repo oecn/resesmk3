@@ -287,7 +287,8 @@ SELECT
 FROM gastos_flota g
 JOIN  vehiculos          v  ON v.id  = g.vehiculo_id
 JOIN  tipos_gasto_flota  tg ON tg.id = g.tipo_gasto_id
-LEFT JOIN proveedores_flota p ON p.id = g.proveedor_id;
+LEFT JOIN proveedores_flota p ON p.id = g.proveedor_id
+WHERE g.eliminado_en IS NULL;
 
 COMMENT ON VIEW public.bi_flota_gastos IS
 'Gastos de flota con vehículo y tipo de gasto desnormalizados. Proveedor unificado entre catálogo y campo manual. Relacionar con bi_flota_combustible por vehiculo_id.';

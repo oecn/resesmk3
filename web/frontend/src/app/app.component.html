@@ -2023,8 +2023,8 @@
 
       <section class="panel" *ngIf="flotaSeccion === 'gastos'">
         <div class="panel-title">
-          <h2>Gasto adicional</h2>
-          <span>Mantenimiento y otros</span>
+          <h2>{{ gastoEditId ? 'Editar gasto' : 'Gasto adicional' }}</h2>
+          <span>{{ gastoEditId ? 'Edicion de registro' : 'Mantenimiento y otros' }}</span>
         </div>
         <form class="form-grid" (ngSubmit)="crearGastoFlota()">
           <label>
@@ -2074,7 +2074,10 @@
             Detalle
             <textarea name="gastoDetalle" [(ngModel)]="gastoDetalle"></textarea>
           </label>
-          <button type="submit" [disabled]="flotaLoading()">Guardar gasto</button>
+          <div class="inline-actions full-span">
+            <button type="submit" [disabled]="flotaLoading()">{{ gastoEditId ? 'Guardar cambios' : 'Guardar gasto' }}</button>
+            <button type="button" class="secondary" *ngIf="gastoEditId" (click)="cancelarEdicionGasto()" [disabled]="flotaLoading()">Cancelar</button>
+          </div>
         </form>
       </section>
     </section>
@@ -2139,6 +2142,7 @@
                 <th>Km</th>
                 <th>Factura</th>
                 <th>Detalle</th>
+                <th>Accion</th>
               </tr>
             </thead>
             <tbody>
@@ -2152,6 +2156,12 @@
                 <td>{{ row.km_actual ? fmtNumber(row.km_actual, 0) : '-' }}</td>
                 <td>{{ row.nro_factura || '-' }}</td>
                 <td>{{ row.detalle || '-' }}</td>
+                <td>
+                  <div class="inline-actions">
+                    <button type="button" class="secondary mini-button" (click)="editarGastoFlota(row)" [disabled]="flotaLoading() || !canModifyGastoFlota(row)">Editar</button>
+                    <button type="button" class="danger mini-button" (click)="eliminarGastoFlota(row)" [disabled]="flotaLoading() || !canModifyGastoFlota(row)">Eliminar</button>
+                  </div>
+                </td>
               </tr>
             </tbody>
           </table>

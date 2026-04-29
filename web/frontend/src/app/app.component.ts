@@ -205,6 +205,7 @@ export class AppComponent implements OnInit {
   combustibleFactura = '';
   combustibleObservacion = '';
   gastoFecha = new Date().toISOString().slice(0, 10);
+  gastoEditId: number | null = null;
   gastoVehiculoId: number | null = null;
   gastoTipoId: number | null = null;
   gastoProveedorId: number | null = null;
@@ -1377,6 +1378,36 @@ export class AppComponent implements OnInit {
     });
   }
 
+  eliminarGastoFlota(row: FlotaGastoRow): void {
+    if (!this.canModifyGastoFlota(row)) {
+      this.flotaError.set('Recepcion solo puede eliminar gastos creados en los ultimos 2 dias.');
+      return;
+    }
+    const vehiculo = this.vehiculoMovLabel(row);
+    const motivo = window.prompt(`Motivo de eliminacion para el gasto de ${vehiculo} del ${row.fecha}:`, '');
+    if (motivo === null) {
+      return;
+    }
+    const motivoLimpio = motivo.trim();
+    if (!motivoLimpio) {
+      this.flotaError.set('Debes indicar el motivo de eliminacion.');
+      return;
+    }
+    this.flotaLoading.set(true);
+    this.flotaError.set('');
+    this.flotaOk.set('');
+    this.dashboardService.deleteFlotaGasto({ id: row.id, motivo: motivoLimpio }).subscribe({
+      next: () => {
+        this.flotaOk.set('Gasto de flota eliminado.');
+        this.cargarFlota();
+      },
+      error: (err) => {
+        this.flotaError.set(err?.error?.error ?? 'No se pudo eliminar el gasto.');
+        this.flotaLoading.set(false);
+      },
+    });
+  }
+
   onCombustibleImportSelected(event: Event): void {
     const input = event.target as HTMLInputElement | null;
     const file = input?.files?.[0] ?? null;
@@ -1464,6 +1495,7 @@ export class AppComponent implements OnInit {
         this.dashboardService.previewFlotaCombustibleImport({
           file_name: this.combustibleImportFile?.name ?? 'combustible.xlsx',
           file_content: fileContent,
+          proveedor_id: this.combustibleImportProveedorId,
         }).subscribe({
           next: (result) => {
             this.flotaCombustibleImportPreview.set(result.items);
@@ -1500,6 +1532,7 @@ export class AppComponent implements OnInit {
     this.flotaError.set('');
     this.flotaOk.set('');
     this.dashboardService.saveFlotaGasto({
+      id: this.gastoEditId,
       fecha: this.gastoFecha,
       vehiculo_id: this.gastoVehiculoId,
       tipo_gasto_id: this.gastoTipoId,
@@ -1512,13 +1545,9 @@ export class AppComponent implements OnInit {
       detalle: this.gastoDetalle,
     }).subscribe({
       next: () => {
-        this.gastoProveedorNombre = '';
-        this.gastoProveedorRuc = '';
-        this.gastoImporte = '';
-        this.gastoKmActual = '';
-        this.gastoFactura = '';
-        this.gastoDetalle = '';
-        this.flotaOk.set('Gasto registrado.');
+        const editing = this.gastoEditId !== null;
+        this.resetGastoForm();
+        this.flotaOk.set(editing ? 'Gasto actualizado.' : 'Gasto registrado.');
         this.cargarFlota();
       },
       error: (err) => {
@@ -1526,6 +1555,53 @@ export class AppComponent implements OnInit {
         this.flotaLoading.set(false);
       },
     });
+  }
+
+  editarGastoFlota(row: FlotaGastoRow): void {
+    if (!this.canModifyGastoFlota(row)) {
+      this.flotaError.set('Recepcion solo puede editar gastos creados en los ultimos 2 dias.');
+      return;
+    }
+    this.gastoEditId = row.id;
+    this.gastoFecha = row.fecha;
+    this.gastoVehiculoId = row.vehiculo_id;
+    this.gastoTipoId = row.tipo_gasto_id;
+    this.gastoProveedorId = row.proveedor_id ?? null;
+    this.gastoProveedorNombre = row.proveedor_nombre ?? '';
+    this.gastoProveedorRuc = row.proveedor_ruc ?? '';
+    this.gastoImporte = String(row.importe ?? '');
+    this.gastoKmActual = row.km_actual != null ? String(row.km_actual) : '';
+    this.gastoFactura = row.nro_factura ?? '';
+    this.gastoDetalle = row.detalle ?? '';
+  }
+
+  cancelarEdicionGasto(): void {
+    this.resetGastoForm();
+  }
+
+  private resetGastoForm(): void {
+    this.gastoEditId = null;
+    this.gastoProveedorNombre = '';
+    this.gastoProveedorRuc = '';
+    this.gastoImporte = '';
+    this.gastoKmActual = '';
+    this.gastoFactura = '';
+    this.gastoDetalle = '';
+  }
+
+  canModifyGastoFlota(row: FlotaGastoRow): boolean {
+    const role = this.currentUser()?.rol;
+    if (role === 'admin' || role === 'supervisor') {
+      return true;
+    }
+    if (role !== 'recepcion' || !row.creado_en) {
+      return false;
+    }
+    const createdAt = new Date(row.creado_en).getTime();
+    if (!Number.isFinite(createdAt)) {
+      return false;
+    }
+    return Date.now() - createdAt <= 2 * 24 * 60 * 60 * 1000;
   }
 
   vehiculoSucursalLabel(slug?: string | null): string {

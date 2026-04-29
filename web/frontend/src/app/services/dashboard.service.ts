@@ -348,6 +348,9 @@ export interface FlotaGastoRow {
   anho: number;
   cargado_por?: string | null;
   creado_en?: string | null;
+  eliminado_en?: string | null;
+  eliminado_por?: string | null;
+  motivo_eliminacion?: string | null;
 }
 
 export interface FlotaResumenRow {
@@ -522,6 +525,7 @@ export class DashboardService {
   previewFlotaCombustibleImport(payload: {
     file_name: string;
     file_content: string;
+    proveedor_id?: number | null;
   }): Observable<FlotaCombustibleImportPreviewResult> {
     return this.http.post<FlotaCombustibleImportPreviewResult>(`${environment.apiUrl}/flota/combustible/import/preview`, payload, { withCredentials: true });
   }
@@ -553,6 +557,7 @@ export class DashboardService {
   }
 
   saveFlotaGasto(payload: {
+    id?: number | null;
     fecha: string;
     vehiculo_id: number;
     tipo_gasto_id: number;
@@ -565,6 +570,14 @@ export class DashboardService {
     detalle?: string;
   }): Observable<FlotaGastoRow> {
     return this.http.post<FlotaGastoRow>(`${environment.apiUrl}/flota/gastos`, payload, { withCredentials: true });
+  }
+
+  deleteFlotaGasto(payload: { id: number; motivo: string }): Observable<{ ok: boolean; item: { id: number; eliminado_en: string; eliminado_por: string; motivo_eliminacion: string } }> {
+    return this.http.post<{ ok: boolean; item: { id: number; eliminado_en: string; eliminado_por: string; motivo_eliminacion: string } }>(
+      `${environment.apiUrl}/flota/gastos/eliminar`,
+      payload,
+      { withCredentials: true },
+    );
   }
 
   getFlotaResumenSemanal(filters: {
