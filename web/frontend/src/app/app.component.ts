@@ -1,15 +1,26 @@
 import { CommonModule } from '@angular/common';
 import { Component, ElementRef, OnInit, ViewChild, computed, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { NavigationEnd, Router, RouterOutlet } from '@angular/router';
 import { forkJoin } from 'rxjs';
+import { AuthService } from './core/auth/auth.service';
+import { CurrentUser } from './core/auth/auth.models';
+import { AdminUsersService } from './features/admin/users/admin-users.service';
+import { LoginComponent } from './features/auth/login/login.component';
+import { DashboardFeatureService } from './features/dashboard/dashboard.service';
+import { FlotaService } from './features/flota/flota.service';
+import { ComprasFaenaService } from './features/operaciones/compras-faena/compras-faena.service';
+import { DistribucionesService } from './features/operaciones/distribuciones/distribuciones.service';
+import { RecepcionService } from './features/operaciones/recepcion/recepcion.service';
+import { ResumenesService } from './features/resumenes/resumenes.service';
+import { FmtMoneyPipe } from './shared/pipes/fmt-money.pipe';
+import { FmtNumberPipe } from './shared/pipes/fmt-number.pipe';
 import {
   AdminUser,
   AdminUsersData,
-  DashboardData,
-  DashboardService,
   CompraFaenaLote,
   ComprasFaenaData,
-  CurrentUser,
+  DashboardData,
   DistribucionLote,
   DistribucionLocal,
   DistribucionRow,
@@ -31,7 +42,7 @@ import {
   RecepcionSucursalSlug,
   ResumenesData,
   TopMenudencia,
-} from './services/dashboard.service';
+} from './shared/models/dashboard.models';
 
 type AppView = 'dashboard' | 'compras-faena' | 'resumenes' | 'recepcion' | 'distribuciones' | 'usuarios' | 'flota';
 type FlotaSection = 'resumen' | 'vehiculos' | 'combustible' | 'gastos';
@@ -48,7 +59,7 @@ type OptionalKpiKey =
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, RouterOutlet, LoginComponent, FmtNumberPipe, FmtMoneyPipe],
   templateUrl: './app.component.html',
   styleUrl: './app.component.css',
 })
@@ -248,6 +259,24 @@ export class AppComponent implements OnInit {
   flotaGastos = signal<FlotaGastoRow[]>([]);
   flotaResumen = signal<FlotaResumenSemanalData | null>(null);
   readonly tiposCombustible = ['SUPREMA 97', 'OPTIMO DIESEL', 'DIESEL MAX S10'];
+  private readonly routeToView: Record<string, AppView> = {
+    '/dashboard': 'dashboard',
+    '/compras-faena': 'compras-faena',
+    '/resumenes': 'resumenes',
+    '/recepcion': 'recepcion',
+    '/distribuciones': 'distribuciones',
+    '/usuarios': 'usuarios',
+    '/flota': 'flota',
+  };
+  private readonly viewToRoute: Record<AppView, string> = {
+    dashboard: '/dashboard',
+    'compras-faena': '/compras-faena',
+    resumenes: '/resumenes',
+    recepcion: '/recepcion',
+    distribuciones: '/distribuciones',
+    usuarios: '/usuarios',
+    flota: '/flota',
+  };
 
   lotesFiltrados = computed(() => {
     const term = this.busqueda.trim().toLowerCase();
@@ -578,24 +607,41 @@ export class AppComponent implements OnInit {
   loginUsername = '';
   loginPassword = '';
 
-  constructor(private readonly dashboardService: DashboardService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly adminUsersService: AdminUsersService,
+    private readonly dashboardService: DashboardFeatureService,
+    private readonly flotaService: FlotaService,
+    private readonly comprasFaenaService: ComprasFaenaService,
+    private readonly distribucionesService: DistribucionesService,
+    private readonly recepcionService: RecepcionService,
+    private readonly resumenesService: ResumenesService,
+    private readonly router: Router,
+  ) {}
 
   ngOnInit(): void {
     this.cargarPreferenciasKpis();
     this.cargarPreferenciaTema();
     this.setPeriodoSeleccionado();
     this.setComprasFaenaRangoDefault();
+    this.syncVistaFromRoute(this.router.url);
+    this.router.events.subscribe((event) => {
+      if (event instanceof NavigationEnd) {
+        this.syncVistaFromRoute(event.urlAfterRedirects);
+      }
+    });
     this.restoreSession();
   }
 
   restoreSession(): void {
     this.authLoading.set(true);
     this.authError.set('');
-    this.dashboardService.getCurrentUser().subscribe({
+    this.authService.getCurrentUser().subscribe({
       next: ({ user }) => {
         this.currentUser.set(user);
         this.syncRecepcionScopeFromUser();
         this.ensureVistaPermitida();
+        this.syncRouteFromVista(true);
         this.authLoading.set(false);
         this.cargarTodoInicial();
       },
@@ -612,7 +658,7 @@ export class AppComponent implements OnInit {
   login(): void {
     this.authLoading.set(true);
     this.authError.set('');
-    this.dashboardService.login({
+    this.authService.login({
       username: this.loginUsername,
       password: this.loginPassword,
     }).subscribe({
@@ -620,6 +666,7 @@ export class AppComponent implements OnInit {
         this.currentUser.set(user);
         this.syncRecepcionScopeFromUser();
         this.ensureVistaPermitida();
+        this.syncRouteFromVista(true);
         this.loginPassword = '';
         this.authLoading.set(false);
         this.cargarTodoInicial();
@@ -635,12 +682,13 @@ export class AppComponent implements OnInit {
   logout(): void {
     this.authLoading.set(true);
     this.authError.set('');
-    this.dashboardService.logout().subscribe({
+    this.authService.logout().subscribe({
       next: () => {
         this.currentUser.set(null);
         this.recepcionSucursal = 'itaugua';
         this.loginPassword = '';
         this.authLoading.set(false);
+        this.router.navigateByUrl('/login', { replaceUrl: true });
         this.limpiarDatosCargados();
       },
       error: (err) => {
@@ -703,25 +751,46 @@ export class AppComponent implements OnInit {
     }
   }
 
+  private syncVistaFromRoute(url: string): void {
+    const path = `/${String(url || '').split('?')[0].split('#')[0].replace(/^\/+/, '')}`;
+    const vista = this.routeToView[path === '/' ? '/dashboard' : path];
+    if (vista && vista !== this.vista) {
+      this.vista = vista;
+    }
+  }
+
+  private syncRouteFromVista(replaceUrl = false): void {
+    const route = this.viewToRoute[this.vista] ?? '/dashboard';
+    const current = `/${this.router.url.split('?')[0].split('#')[0].replace(/^\/+/, '')}`;
+    if (current !== route) {
+      this.router.navigateByUrl(route, { replaceUrl });
+    }
+  }
+
   private ensureVistaPermitida(): void {
     if (this.vista === 'usuarios' && !this.canManageUsers()) {
       this.vista = this.canManageRecepcion() ? 'recepcion' : 'dashboard';
+      this.syncRouteFromVista(true);
       return;
     }
     if ((this.vista === 'dashboard' || this.vista === 'resumenes') && !this.canViewAnalytics()) {
       this.vista = this.canManageRecepcion() ? 'recepcion' : 'dashboard';
+      this.syncRouteFromVista(true);
       return;
     }
     if ((this.vista === 'compras-faena' || this.vista === 'distribuciones') && !this.canManageOperations()) {
       this.vista = this.canManageRecepcion() ? 'recepcion' : 'dashboard';
+      this.syncRouteFromVista(true);
       return;
     }
     if (this.vista === 'flota' && !this.canManageFlota()) {
       this.vista = this.canManageRecepcion() ? 'recepcion' : 'dashboard';
+      this.syncRouteFromVista(true);
       return;
     }
     if (this.vista === 'recepcion' && !this.canManageRecepcion()) {
       this.vista = 'dashboard';
+      this.syncRouteFromVista(true);
     }
   }
 
@@ -898,6 +967,7 @@ export class AppComponent implements OnInit {
       return;
     }
     this.vista = vista;
+    this.syncRouteFromVista();
     this.closeViewMenu();
     if (vista === 'compras-faena' && !this.comprasFaena()) {
       this.cargarComprasFaena();
@@ -954,7 +1024,7 @@ export class AppComponent implements OnInit {
     }
     this.usuariosLoading.set(true);
     this.usuariosError.set('');
-    this.dashboardService.getAdminUsers().subscribe({
+    this.adminUsersService.getAdminUsers().subscribe({
       next: (data) => {
         this.adminUsers.set(data);
         if (!data.roles.includes(this.usuarioRol)) {
@@ -974,7 +1044,7 @@ export class AppComponent implements OnInit {
     this.usuariosLoading.set(true);
     this.usuariosError.set('');
     this.usuariosOk.set('');
-    this.dashboardService.createAdminUser({
+    this.adminUsersService.createAdminUser({
       username: this.usuarioUsername,
       nombre: this.usuarioNombre,
       password: this.usuarioPassword,
@@ -1003,7 +1073,7 @@ export class AppComponent implements OnInit {
     this.usuariosLoading.set(true);
     this.usuariosError.set('');
     this.usuariosOk.set('');
-    this.dashboardService.updateAdminUser({
+    this.adminUsersService.updateAdminUser({
       id: user.id,
       nombre: user.nombre,
       rol: user.rol,
@@ -1037,7 +1107,7 @@ export class AppComponent implements OnInit {
     this.usuariosLoading.set(true);
     this.usuariosError.set('');
     this.usuariosOk.set('');
-    this.dashboardService.updateAdminPassword({
+    this.adminUsersService.updateAdminPassword({
       id: user.id,
       password: this.usuarioPasswordNueva,
     }).subscribe({
@@ -1065,7 +1135,7 @@ export class AppComponent implements OnInit {
       this.flotaLoading.set(true);
     }
     this.flotaError.set('');
-    this.dashboardService.getFlotaCatalogos().subscribe({
+    this.flotaService.getFlotaCatalogos().subscribe({
       next: (catalogos) => {
         this.flotaCatalogos.set(catalogos);
         const vehiculosVisibles = this.flotaVehiculosVisibles();
@@ -1113,7 +1183,7 @@ export class AppComponent implements OnInit {
     if (showLoading) {
       this.flotaLoading.set(true);
     }
-    this.dashboardService.getFlotaCombustible({
+    this.flotaService.getFlotaCombustible({
       desde: this.combustibleDesde || undefined,
       hasta: this.combustibleHasta || undefined,
       vehiculo_id: this.flotaVehiculoId,
@@ -1148,7 +1218,7 @@ export class AppComponent implements OnInit {
     if (showLoading) {
       this.flotaLoading.set(true);
     }
-    this.dashboardService.getFlotaGastos({
+    this.flotaService.getFlotaGastos({
       vehiculo_id: this.flotaGastoVehiculoId,
       tipo_gasto_id: this.flotaTipoGastoFiltroId,
       sucursal: this.flotaFiltroSucursal || null,
@@ -1175,7 +1245,7 @@ export class AppComponent implements OnInit {
     if (showLoading) {
       this.flotaLoading.set(true);
     }
-    this.dashboardService.getFlotaResumenSemanal({
+    this.flotaService.getFlotaResumenSemanal({
       mes: this.flotaMes,
       anho: this.flotaAnho,
       vehiculo_id: this.flotaResumenVehiculoId,
@@ -1209,7 +1279,7 @@ export class AppComponent implements OnInit {
     this.flotaLoading.set(true);
     this.flotaError.set('');
     this.flotaOk.set('');
-    this.dashboardService.getFlotaResumenMensualPdf({
+    this.flotaService.getFlotaResumenMensualPdf({
       mes: this.flotaMes,
       anho: this.flotaAnho,
       vehiculo_id: this.flotaResumenVehiculoId,
@@ -1266,7 +1336,7 @@ export class AppComponent implements OnInit {
     this.flotaLoading.set(true);
     this.flotaError.set('');
     this.flotaOk.set('');
-    this.dashboardService.saveFlotaVehiculo({
+    this.flotaService.saveFlotaVehiculo({
       id: this.vehiculoEditId,
       codigo: this.vehiculoCodigo,
       chapa: this.vehiculoChapa,
@@ -1295,7 +1365,7 @@ export class AppComponent implements OnInit {
     this.flotaLoading.set(true);
     this.flotaError.set('');
     this.flotaOk.set('');
-    this.dashboardService.saveFlotaProveedor({
+    this.flotaService.saveFlotaProveedor({
       nombre: this.proveedorNombre,
       tipo: this.proveedorTipo,
       ruc: this.proveedorRuc,
@@ -1326,7 +1396,7 @@ export class AppComponent implements OnInit {
     this.flotaLoading.set(true);
     this.flotaError.set('');
     this.flotaOk.set('');
-    this.dashboardService.saveFlotaCombustible({
+    this.flotaService.saveFlotaCombustible({
       fecha: this.combustibleFecha,
       vehiculo_id: this.combustibleVehiculoId,
       proveedor_id: this.combustibleProveedorId,
@@ -1366,7 +1436,7 @@ export class AppComponent implements OnInit {
     this.flotaLoading.set(true);
     this.flotaError.set('');
     this.flotaOk.set('');
-    this.dashboardService.deleteFlotaCombustible({ id: row.id, motivo: motivoLimpio }).subscribe({
+    this.flotaService.deleteFlotaCombustible({ id: row.id, motivo: motivoLimpio }).subscribe({
       next: () => {
         this.flotaOk.set('Carga de combustible eliminada.');
         this.cargarFlota();
@@ -1396,7 +1466,7 @@ export class AppComponent implements OnInit {
     this.flotaLoading.set(true);
     this.flotaError.set('');
     this.flotaOk.set('');
-    this.dashboardService.deleteFlotaGasto({ id: row.id, motivo: motivoLimpio }).subscribe({
+    this.flotaService.deleteFlotaGasto({ id: row.id, motivo: motivoLimpio }).subscribe({
       next: () => {
         this.flotaOk.set('Gasto de flota eliminado.');
         this.cargarFlota();
@@ -1453,7 +1523,7 @@ export class AppComponent implements OnInit {
     this.flotaOk.set('');
     this.readFileAsDataUrl(this.combustibleImportFile)
       .then((fileContent) => {
-        this.dashboardService.importFlotaCombustible({
+        this.flotaService.importFlotaCombustible({
           file_name: this.combustibleImportFile?.name ?? 'combustible.xlsx',
           file_content: fileContent,
           proveedor_id: this.combustibleImportProveedorId,
@@ -1492,7 +1562,7 @@ export class AppComponent implements OnInit {
     this.flotaOk.set('');
     this.readFileAsDataUrl(this.combustibleImportFile)
       .then((fileContent) => {
-        this.dashboardService.previewFlotaCombustibleImport({
+        this.flotaService.previewFlotaCombustibleImport({
           file_name: this.combustibleImportFile?.name ?? 'combustible.xlsx',
           file_content: fileContent,
           proveedor_id: this.combustibleImportProveedorId,
@@ -1531,7 +1601,7 @@ export class AppComponent implements OnInit {
     this.flotaLoading.set(true);
     this.flotaError.set('');
     this.flotaOk.set('');
-    this.dashboardService.saveFlotaGasto({
+    this.flotaService.saveFlotaGasto({
       id: this.gastoEditId,
       fecha: this.gastoFecha,
       vehiculo_id: this.gastoVehiculoId,
@@ -1717,7 +1787,7 @@ export class AppComponent implements OnInit {
       this.resumenLoading.set(true);
     }
     this.error.set('');
-    this.dashboardService.getResumenes(Array.from(this.resumenSeleccionados)).subscribe({
+    this.resumenesService.getResumenes(Array.from(this.resumenSeleccionados)).subscribe({
       next: (data) => {
         this.resumenes.set(data);
         if (showLoading) {
@@ -1741,7 +1811,7 @@ export class AppComponent implements OnInit {
     }
     this.resumenLoading.set(true);
     this.error.set('');
-    this.dashboardService.getResumenesPdf(loteIds).subscribe({
+    this.resumenesService.getResumenesPdf(loteIds).subscribe({
       next: (blob) => {
         const url = URL.createObjectURL(blob);
         const opened = window.open(url, '_blank', 'noopener');
@@ -1776,7 +1846,7 @@ export class AppComponent implements OnInit {
     }
     this.resumenLoading.set(true);
     this.error.set('');
-    this.dashboardService.marcarResumenesCerrados(loteIds).subscribe({
+    this.resumenesService.marcarResumenesCerrados(loteIds).subscribe({
       next: () => {
         this.cargarResumenes(false);
       },
@@ -1791,7 +1861,7 @@ export class AppComponent implements OnInit {
     event?.stopPropagation();
     this.resumenLoading.set(true);
     this.error.set('');
-    this.dashboardService.marcarResumenesCerrados([lote.id], !lote.cerrado).subscribe({
+    this.resumenesService.marcarResumenesCerrados([lote.id], !lote.cerrado).subscribe({
       next: () => {
         this.cargarResumenes(false);
       },
@@ -1821,7 +1891,7 @@ export class AppComponent implements OnInit {
   cargarComprasFaena(loteId?: number | null): void {
     this.compraLoading.set(true);
     this.error.set('');
-    this.dashboardService.getComprasFaena(loteId ?? this.compraLoteId).subscribe({
+    this.comprasFaenaService.getComprasFaena(loteId ?? this.compraLoteId).subscribe({
       next: (data) => {
         this.comprasFaena.set(data);
         this.compraLoteId = data.selected_lote_id;
@@ -1927,7 +1997,7 @@ export class AppComponent implements OnInit {
   guardarCompraLote(): void {
     this.compraLoading.set(true);
     this.error.set('');
-    this.dashboardService.saveCompraLote({
+    this.comprasFaenaService.saveCompraLote({
       id: null,
       lote: this.compraLote,
       empresa: this.compraEmpresa,
@@ -1971,7 +2041,7 @@ export class AppComponent implements OnInit {
     }
     this.compraLoading.set(true);
     this.error.set('');
-    this.dashboardService.saveCompraLote({
+    this.comprasFaenaService.saveCompraLote({
       id: lote.id,
       lote: this.modalCompraLote,
       empresa: this.modalCompraEmpresa,
@@ -2020,7 +2090,7 @@ export class AppComponent implements OnInit {
     }
     this.compraLoading.set(true);
     this.error.set('');
-    this.dashboardService.addFaena({
+    this.comprasFaenaService.addFaena({
       lote_id: lote.id,
       fecha: this.faenaFecha,
       cantidad: this.faenaCantidad,
@@ -2047,7 +2117,7 @@ export class AppComponent implements OnInit {
     }
     this.compraLoading.set(true);
     this.error.set('');
-    this.dashboardService.setFaenaTotal({
+    this.comprasFaenaService.setFaenaTotal({
       lote_id: lote.id,
       fecha: this.faenaAjusteFecha,
       cantidad_total: this.faenaAjusteCantidad,
@@ -2071,7 +2141,7 @@ export class AppComponent implements OnInit {
       this.distribucionError.set('');
       this.distribucionOk.set('');
     }
-    this.dashboardService.getDistribuciones(loteId ?? this.distribucionLoteId).subscribe({
+    this.distribucionesService.getDistribuciones(loteId ?? this.distribucionLoteId).subscribe({
       next: (data) => {
         this.distribuciones.set(data);
         this.distribucionLoteId = data.selected_lote_id;
@@ -2152,7 +2222,7 @@ export class AppComponent implements OnInit {
     this.distribucionLoading.set(true);
     this.distribucionError.set('');
     this.distribucionOk.set('');
-    this.dashboardService
+    this.distribucionesService
       .saveDistribucion({
         id: row.id,
         lote_id: loteId,
@@ -2219,7 +2289,7 @@ export class AppComponent implements OnInit {
     this.distribucionLoading.set(true);
     this.distribucionError.set('');
     this.distribucionOk.set('');
-    this.dashboardService
+    this.distribucionesService
       .saveDistribucion({
         id: null,
         lote_id: this.distribucionLoteId,
@@ -2258,7 +2328,7 @@ export class AppComponent implements OnInit {
     this.distribucionLoading.set(true);
     this.distribucionError.set('');
     this.distribucionOk.set('');
-    this.dashboardService
+    this.distribucionesService
       .saveDistribucion({
         id: this.distribucionEditId,
         lote_id: loteId,
@@ -2292,7 +2362,7 @@ export class AppComponent implements OnInit {
     this.distribucionLoading.set(true);
     this.distribucionError.set('');
     this.distribucionOk.set('');
-    this.dashboardService.deleteDistribucion(row.id).subscribe({
+    this.distribucionesService.deleteDistribucion(row.id).subscribe({
       next: () => {
         this.distribucionOk.set('Distribucion eliminada.');
         this.cargarDistribuciones(this.distribucionLoteId);
@@ -2309,7 +2379,7 @@ export class AppComponent implements OnInit {
     this.recepcionLoading.set(true);
     this.recepcionError.set('');
     this.recepcionOk.set('');
-    this.dashboardService.getRecepcion(this.recepcionSucursal, this.recepcionFecha).subscribe({
+    this.recepcionService.getRecepcion(this.recepcionSucursal, this.recepcionFecha).subscribe({
       next: (data) => {
         this.recepcion.set(data);
         this.recepcionLoading.set(false);
@@ -2336,7 +2406,7 @@ export class AppComponent implements OnInit {
     this.recepcionLoading.set(true);
     this.recepcionError.set('');
     this.recepcionOk.set('');
-    this.dashboardService.getRecepcionPdf(this.recepcionSucursal, this.recepcionFecha).subscribe({
+    this.recepcionService.getRecepcionPdf(this.recepcionSucursal, this.recepcionFecha).subscribe({
       next: (blob) => {
         const url = URL.createObjectURL(blob);
         const opened = window.open(url, '_blank');
@@ -2406,7 +2476,7 @@ export class AppComponent implements OnInit {
     this.recepcionLoading.set(true);
     this.recepcionError.set('');
     this.recepcionOk.set('');
-    this.dashboardService
+    this.recepcionService
       .updateRecepcionDistribucion(this.recepcionSucursal, {
         id: this.seleccionadoId,
         kg: this.recepcionKg,
@@ -2432,7 +2502,7 @@ export class AppComponent implements OnInit {
     this.recepcionLoading.set(true);
     this.recepcionError.set('');
     this.recepcionOk.set('');
-    this.dashboardService
+    this.recepcionService
       .addMenudencia(this.recepcionSucursal, {
         fecha: this.recepcionFecha,
         producto: this.nuevoProducto,
@@ -2459,7 +2529,7 @@ export class AppComponent implements OnInit {
     this.recepcionLoading.set(true);
     this.recepcionError.set('');
     this.recepcionOk.set('');
-    this.dashboardService.updateMenudencia(this.recepcionSucursal, row).subscribe({
+    this.recepcionService.updateMenudencia(this.recepcionSucursal, row).subscribe({
       next: () => {
         this.recepcionOk.set('Menudencia actualizada.');
         this.cargarRecepcion();
@@ -2480,7 +2550,7 @@ export class AppComponent implements OnInit {
     this.recepcionLoading.set(true);
     this.recepcionError.set('');
     this.recepcionOk.set('');
-    forkJoin(rows.map((row) => this.dashboardService.updateMenudencia(this.recepcionSucursal, row))).subscribe({
+    forkJoin(rows.map((row) => this.recepcionService.updateMenudencia(this.recepcionSucursal, row))).subscribe({
       next: () => {
         this.recepcionOk.set('Todas las menudencias guardadas.');
         this.cargarRecepcion();
@@ -2501,7 +2571,7 @@ export class AppComponent implements OnInit {
     this.recepcionLoading.set(true);
     this.recepcionError.set('');
     this.recepcionOk.set('');
-    this.dashboardService.deleteMenudencia(this.recepcionSucursal, row.id).subscribe({
+    this.recepcionService.deleteMenudencia(this.recepcionSucursal, row.id).subscribe({
       next: () => {
         this.recepcionOk.set('Menudencia eliminada.');
         this.cargarRecepcion();
@@ -2541,14 +2611,6 @@ export class AppComponent implements OnInit {
   }
 
   fmtMoney(value: number): string {
-    return new Intl.NumberFormat('es-PY', {
-      style: 'currency',
-      currency: 'PYG',
-      maximumFractionDigits: 0,
-    }).format(Number(value) || 0);
-  }
-
-  fmtFlotaMoney(value: number): string {
     return `Gs. ${new Intl.NumberFormat('es-PY', {
       minimumFractionDigits: 0,
       maximumFractionDigits: 0,

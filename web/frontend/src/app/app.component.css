@@ -6,6 +6,10 @@
   font-family: Inter, "Segoe UI", Arial, sans-serif;
 }
 
+router-outlet {
+  display: none;
+}
+
 .shell {
   width: min(1440px, calc(100% - 32px));
   margin: 0 auto;
