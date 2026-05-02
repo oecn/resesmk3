@@ -1,5 +1,3 @@
-<router-outlet></router-outlet>
-
 <main *ngIf="authLoading()" class="auth-shell" [class.dark-mode]="darkMode">
   <section class="auth-card">
     <p class="eyebrow">Verificando sesion</p>
@@ -8,20 +6,7 @@
   </section>
 </main>
 
-<main *ngIf="!authLoading() && !currentUser()" class="auth-shell" [class.dark-mode]="darkMode">
-  <section class="auth-login-wrap">
-    <app-login
-      [(username)]="loginUsername"
-      [(password)]="loginPassword"
-      [loading]="authLoading()"
-      [error]="authError()"
-      (loginRequested)="login()">
-    </app-login>
-    <section class="auth-footnote">
-      <p>Acceso interno para recepcion, distribucion y administracion.</p>
-    </section>
-  </section>
-</main>
+<router-outlet *ngIf="!authLoading() && !currentUser()"></router-outlet>
 
 <main *ngIf="!authLoading() && currentUser()" class="shell" [class.dark-mode]="darkMode">
   <div class="view-menu-backdrop" *ngIf="viewMenuOpen" (click)="closeViewMenu()"></div>
@@ -60,19 +45,19 @@
       </div>
     </section>
     <nav class="view-stack" *ngIf="false">
-      <button *ngIf="canViewAnalytics()" type="button" title="Dashboard" [class.active]="vista === 'dashboard'" (click)="cambiarVista('dashboard')">
+      <button *ngIf="canViewDashboard()" type="button" title="Dashboard" [class.active]="vista === 'dashboard'" (click)="cambiarVista('dashboard')">
         <span class="view-icon" aria-hidden="true">▣</span>
         <span class="view-text">Dashboard</span>
       </button>
-      <button *ngIf="canManageOperations()" type="button" title="Compras y faena" [class.active]="vista === 'compras-faena'" (click)="cambiarVista('compras-faena')">
+      <button *ngIf="canManageComprasFaena()" type="button" title="Compras y faena" [class.active]="vista === 'compras-faena'" (click)="cambiarVista('compras-faena')">
         <span class="view-icon" aria-hidden="true">🐄</span>
         <span class="view-text">Compras y faena</span>
       </button>
-      <button *ngIf="canViewAnalytics()" type="button" title="Resumenes" [class.active]="vista === 'resumenes'" (click)="cambiarVista('resumenes')">
+      <button *ngIf="canViewResumenes()" type="button" title="Resumenes" [class.active]="vista === 'resumenes'" (click)="cambiarVista('resumenes')">
         <span class="view-icon" aria-hidden="true">📋</span>
         <span class="view-text">Resumenes</span>
       </button>
-      <button *ngIf="canManageOperations()" type="button" title="Distribuciones" [class.active]="vista === 'distribuciones'" (click)="cambiarVista('distribuciones')">
+      <button *ngIf="canManageDistribuciones()" type="button" title="Distribuciones" [class.active]="vista === 'distribuciones'" (click)="cambiarVista('distribuciones')">
         <span class="view-icon" aria-hidden="true">🚚</span>
         <span class="view-text">Distribuciones</span>
       </button>
@@ -82,7 +67,7 @@
       </button>
     </nav>
     <nav class="view-stack">
-      <button *ngIf="canViewAnalytics()" type="button" title="Dashboard" [class.active]="vista === 'dashboard'" (click)="cambiarVista('dashboard')">
+      <button *ngIf="canViewDashboard()" type="button" title="Dashboard" [class.active]="vista === 'dashboard'" (click)="cambiarVista('dashboard')">
         <span class="view-icon" aria-hidden="true">
           <svg viewBox="0 0 24 24">
             <path d="M4 4h7v7H4z"></path>
@@ -93,11 +78,11 @@
         </span>
         <span class="view-text">Dashboard</span>
       </button>
-      <button *ngIf="canManageOperations()" type="button" title="Compras y faena" [class.active]="vista === 'compras-faena'" (click)="cambiarVista('compras-faena')">
+      <button *ngIf="canManageComprasFaena()" type="button" title="Compras y faena" [class.active]="vista === 'compras-faena'" (click)="cambiarVista('compras-faena')">
         <span class="view-icon text-icon" aria-hidden="true">Gs.</span>
         <span class="view-text">Compras y faena</span>
       </button>
-      <button *ngIf="canViewAnalytics()" type="button" title="Resumenes" [class.active]="vista === 'resumenes'" (click)="cambiarVista('resumenes')">
+      <button *ngIf="canViewResumenes()" type="button" title="Resumenes" [class.active]="vista === 'resumenes'" (click)="cambiarVista('resumenes')">
         <span class="view-icon" aria-hidden="true">
           <svg viewBox="0 0 24 24">
             <path d="M8 4h8l1 3H7z"></path>
@@ -108,7 +93,7 @@
         </span>
         <span class="view-text">Resumenes</span>
       </button>
-      <button *ngIf="canManageOperations()" type="button" title="Distribuciones" [class.active]="vista === 'distribuciones'" (click)="cambiarVista('distribuciones')">
+      <button *ngIf="canManageDistribuciones()" type="button" title="Distribuciones" [class.active]="vista === 'distribuciones'" (click)="cambiarVista('distribuciones')">
         <span class="view-icon" aria-hidden="true">
           <svg viewBox="0 0 24 24">
             <path d="M3 7h11v9H3z"></path>
@@ -153,6 +138,14 @@
         </span>
         <span class="view-text">Usuarios</span>
       </button>
+      <button *ngIf="canViewAcuerdos()" type="button" title="Acuerdos comerciales" [class.active]="vista === 'acuerdos-comerciales'" (click)="cambiarVista('acuerdos-comerciales')">
+        <span class="view-icon text-icon" aria-hidden="true">AC</span>
+        <span class="view-text">Acuerdos</span>
+      </button>
+      <button *ngIf="canViewArchivosDirectorio()" type="button" title="Archivos de directorio" [class.active]="vista === 'archivos-directorio'" (click)="cambiarVista('archivos-directorio')">
+        <span class="view-icon text-icon" aria-hidden="true">AD</span>
+        <span class="view-text">Archivos</span>
+      </button>
     </nav>
     <div class="view-sidebar-footer">
       <button type="button" class="danger logout-button" title="Cerrar sesion" (click)="logout()">
@@ -161,43 +154,6 @@
       </button>
     </div>
   </aside>
-
-  <section class="topbar" *ngIf="vista === 'dashboard'">
-    <div>
-      <p class="eyebrow">Solo lectura</p>
-      <h1>KPIs de Reces</h1>
-      <p class="subtitle">Compras, faena, distribucion, rendimiento y menudencias.</p>
-      <div class="status-row">
-        <span>{{ rangoTexto() }}</span>
-        <span *ngIf="ultimaActualizacion()">Actualizado {{ ultimaActualizacion() }}</span>
-      </div>
-    </div>
-
-    <form class="filters" (ngSubmit)="cargar()">
-      <label>
-        Periodo
-        <select name="periodoSeleccionado" [(ngModel)]="periodoSeleccionado" (change)="aplicarPeriodo()">
-          <option value="todos">Todos</option>
-          <option value="mes-actual">Este mes</option>
-          <option value="mes-anterior">Mes anterior</option>
-          <option value="trimestre-actual">Este trimestre</option>
-          <option value="trimestre-anterior">Trimestre anterior</option>
-          <option value="ano-actual">Este año</option>
-          <option value="ano-anterior">Año anterior</option>
-        </select>
-      </label>
-      <label>
-        Desde
-        <input type="date" name="desde" [(ngModel)]="desde">
-      </label>
-      <label>
-        Hasta
-        <input type="date" name="hasta" [(ngModel)]="hasta">
-      </label>
-      <button type="submit" [disabled]="loading()">Actualizar</button>
-      <button type="button" class="secondary" (click)="limpiarFiltros()" [disabled]="loading()">Limpiar</button>
-    </form>
-  </section>
 
   <section class="topbar" *ngIf="vista === 'usuarios'">
     <div>
@@ -221,252 +177,15 @@
     </div>
   </section>
 
-  <p *ngIf="error()" class="alert">{{ error() }}</p>
-  <p *ngIf="loading()" class="muted">Cargando informacion...</p>
+  <section class="topbar" *ngIf="vista === 'archivos-directorio'">
+    <div>
+      <p class="eyebrow">Directorio</p>
+      <h1>Archivos</h1>
+      <p class="subtitle">Consulta y descarga de archivos compartidos del sistema.</p>
+    </div>
+  </section>
 
-  <ng-container *ngIf="vista === 'dashboard' && data() as dashboard">
-    <section class="insight-grid">
-      <article class="insight-card">
-        <div>
-          <span>Reses en Camara</span>
-          <strong>{{ (dashboard.resumen.reses_camara | fmtNumber) }}</strong>
-        </div>
-        <p>Faenadas pendientes de distribuir.</p>
-      </article>
-      <article class="insight-card">
-        <div>
-          <span>Reses sin Faenar</span>
-          <strong>{{ (dashboard.resumen.reses_sin_faenar | fmtNumber) }}</strong>
-        </div>
-        <p>Compra pendiente de faena.</p>
-      </article>
-      <article class="insight-card">
-        <div>
-          <span>Lotes pendientes</span>
-          <strong>{{ (dashboard.resumen.lotes_pendientes | fmtNumber) }}</strong>
-        </div>
-        <p>Lotes con saldo sin faenar.</p>
-      </article>
-    </section>
-
-    <section class="kpi-grid">
-      <article class="kpi-card" *ngIf="visibleKpis.lotes">
-        <span>Lotes</span>
-        <strong>{{ (dashboard.resumen.lotes | fmtNumber) }}</strong>
-      </article>
-      <article class="kpi-card" *ngIf="visibleKpis.reces_compradas">
-        <span>Reces compradas</span>
-        <strong>{{ (dashboard.resumen.reces_compradas | fmtNumber) }}</strong>
-      </article>
-      <article class="kpi-card" *ngIf="visibleKpis.reces_faenadas">
-        <span>Reces faenadas</span>
-        <strong>{{ (dashboard.resumen.reces_faenadas | fmtNumber) }}</strong>
-      </article>
-      <article class="kpi-card" *ngIf="visibleKpis.reces_distribuidas">
-        <span>Reces distribuidas</span>
-        <strong>{{ (dashboard.resumen.reces_distribuidas | fmtNumber) }}</strong>
-      </article>
-      <article class="kpi-card" *ngIf="visibleKpis.kg_distribuidos">
-        <span>Kg distribuidos</span>
-        <strong>{{ (dashboard.resumen.kg_distribuidos | fmtNumber:2) }}</strong>
-      </article>
-      <article class="kpi-card" *ngIf="visibleKpis.monto_total">
-        <span>Monto total</span>
-        <strong>{{ (dashboard.resumen.monto_total | fmtMoney) }}</strong>
-      </article>
-      <article class="kpi-card" *ngIf="visibleKpis.costo_kg_promedio">
-        <span>Costo kg promedio</span>
-        <strong>{{ (dashboard.resumen.costo_kg_promedio | fmtMoney) }}</strong>
-      </article>
-    </section>
-
-    <section class="kpi-menu-wrap">
-      <button type="button" class="burger-button" (click)="toggleKpiMenu()" [class.active]="kpiMenuOpen">
-        <span class="burger-icon" aria-hidden="true">
-          <span></span>
-          <span></span>
-          <span></span>
-        </span>
-        Otros KPIs
-      </button>
-      <div class="kpi-menu" *ngIf="kpiMenuOpen">
-        <div class="panel-title">
-          <h2>Mostrar KPIs</h2>
-          <span>Elegir visibles</span>
-        </div>
-        <label *ngFor="let kpi of optionalKpis">
-          <input
-            type="checkbox"
-            [checked]="visibleKpis[kpi.key]"
-            (change)="toggleKpi(kpi.key, $any($event.target).checked)"
-          >
-          {{ kpi.label }}
-        </label>
-      </div>
-    </section>
-
-    <section class="panel-grid">
-      <article class="panel">
-        <div class="panel-title">
-          <h2>Compras por empresa</h2>
-          <span>{{ dashboard.comprasPorEmpresa.length }} empresas</span>
-        </div>
-        <div class="table-wrap">
-          <table class="compact-table">
-            <thead>
-              <tr>
-                <th>Empresa</th>
-                <th>Reces</th>
-                <th>Kg compra</th>
-                <th>Monto</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr *ngFor="let row of dashboard.comprasPorEmpresa">
-                <td>{{ row.empresa }}</td>
-                <td>{{ (row.reces | fmtNumber) }}</td>
-                <td>{{ (row.kg_compra | fmtNumber:2) }}</td>
-                <td>{{ (row.monto | fmtMoney) }}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </article>
-
-      <article class="panel">
-        <div class="panel-title">
-          <h2>Distribucion por local</h2>
-          <span>Kg y reces</span>
-        </div>
-        <div class="bars">
-          <div class="bar-row" *ngFor="let row of dashboard.distribucionesPorLocal">
-            <div class="bar-label">
-              <strong>{{ row.local }}</strong>
-              <span>{{ (row.kg | fmtNumber:2) }} kg - {{ (row.reces | fmtNumber) }} reces</span>
-            </div>
-            <div class="bar-track">
-              <div class="bar-fill" [style.width]="barWidth(row, maxDistribucionKg())"></div>
-            </div>
-          </div>
-        </div>
-      </article>
-
-      <article class="panel">
-        <div class="panel-title">
-          <h2>Menudencias por sucursal</h2>
-          <span>Kg y unidades</span>
-        </div>
-        <div class="bars accent">
-          <div class="bar-row" *ngFor="let row of dashboard.menudenciasPorSucursal">
-            <div class="bar-label">
-              <strong>{{ row.sucursal }}</strong>
-              <span>{{ (row.kg | fmtNumber:2) }} kg - {{ (row.unidades | fmtNumber) }} unidades</span>
-            </div>
-            <div class="bar-track">
-              <div class="bar-fill" [style.width]="barWidth(row, maxMenudenciaKg())"></div>
-            </div>
-          </div>
-        </div>
-      </article>
-    </section>
-
-    <section class="menudencias-grid">
-      <article class="panel">
-        <div class="panel-title">
-          <h2>Top menudencias</h2>
-          <span>Por kg</span>
-        </div>
-        <div class="bars product-bars">
-          <div class="bar-row" *ngFor="let row of dashboard.topMenudencias">
-            <div class="bar-label">
-              <strong>{{ row.producto }}</strong>
-              <span>{{ (row.kg | fmtNumber:2) }} kg - {{ (row.unidades | fmtNumber) }} unidades</span>
-            </div>
-            <div class="bar-track">
-              <div class="bar-fill product" [style.width]="barWidth(row, maxTopMenudenciaKg())"></div>
-            </div>
-            <small>{{ (row.kg_por_unidad | fmtNumber:3) }} kg/unidad</small>
-          </div>
-        </div>
-      </article>
-
-      <article class="panel">
-        <div class="panel-title">
-          <h2>Comparativo por producto</h2>
-          <span>Top {{ dashboard.menudenciasPorProductoSucursal.length }}</span>
-        </div>
-        <div class="table-wrap">
-          <table class="compare-table">
-            <thead>
-              <tr>
-                <th>Producto</th>
-                <th>Total kg</th>
-                <th>Total unid.</th>
-                <th>Aregua kg</th>
-                <th>Luque kg</th>
-                <th>Itaugua kg</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr *ngFor="let row of dashboard.menudenciasPorProductoSucursal">
-                <td>{{ row.producto }}</td>
-                <td>{{ (row.kg_total | fmtNumber:2) }}</td>
-                <td>{{ (row.unidades_total | fmtNumber) }}</td>
-                <td>{{ (row.aregua_kg | fmtNumber:2) }}</td>
-                <td>{{ (row.luque_kg | fmtNumber:2) }}</td>
-                <td>{{ (row.itaugua_kg | fmtNumber:2) }}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </article>
-    </section>
-
-    <section class="panel full">
-      <div class="panel-title">
-        <h2>Resumen por lote</h2>
-        <span>{{ lotesFiltrados().length }} de {{ dashboard.lotes.length }} registros</span>
-      </div>
-      <div class="table-tools">
-        <label>
-          Buscar lote o empresa
-          <input type="search" name="busqueda" [(ngModel)]="busqueda" placeholder="Ej: Corral, 2026-04, lote">
-        </label>
-      </div>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Fecha</th>
-              <th>Lote</th>
-              <th>Empresa</th>
-              <th>Compra</th>
-              <th>Faenado</th>
-              <th>Distribuido</th>
-              <th>Kg dist.</th>
-              <th>Costo kg</th>
-              <th>Distribuido %</th>
-              <th>Rend. %</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr *ngFor="let lote of lotesFiltrados()">
-              <td>{{ lote.fecha }}</td>
-              <td>{{ lote.lote }}</td>
-              <td>{{ lote.empresa }}</td>
-              <td>{{ (lote.cantcompra | fmtNumber) }}</td>
-              <td>{{ (lote.faenado | fmtNumber) }}</td>
-              <td>{{ (lote.distribuido | fmtNumber) }}</td>
-              <td>{{ (lote.kg | fmtNumber:2) }}</td>
-              <td>{{ (lote.costokg | fmtMoney) }}</td>
-              <td>{{ (lote.pct_distribuido | fmtNumber:2) }}%</td>
-              <td>{{ (lote.rend_pct | fmtNumber:2) }}%</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </section>
-  </ng-container>
+  <router-outlet *ngIf="vista === 'dashboard' || vista === 'usuarios' || vista === 'acuerdos-comerciales' || vista === 'archivos-directorio'"></router-outlet>
 
   <ng-container *ngIf="vista === 'resumenes'">
     <p *ngIf="resumenLoading()" class="muted">Cargando resumenes...</p>
@@ -1335,117 +1054,6 @@
     </section>
   </ng-container>
 
-  <ng-container *ngIf="vista === 'usuarios'">
-    <p *ngIf="usuariosError()" class="alert">{{ usuariosError() }}</p>
-    <p *ngIf="usuariosOk()" class="success-alert">{{ usuariosOk() }}</p>
-    <p *ngIf="usuariosLoading()" class="muted">Cargando o guardando usuarios...</p>
-
-    <section class="panel">
-      <div class="panel-title">
-        <h2>Nuevo usuario</h2>
-        <span>Solo administradores</span>
-      </div>
-      <form class="form-grid users-form" (ngSubmit)="crearUsuario()">
-        <label>
-          Nombre
-          <input type="text" name="usuarioNombre" [(ngModel)]="usuarioNombre" required>
-        </label>
-        <label>
-          Username
-          <input type="text" name="usuarioUsername" [(ngModel)]="usuarioUsername" required>
-        </label>
-        <label>
-          Password inicial
-          <input type="password" name="usuarioPassword" [(ngModel)]="usuarioPassword" required>
-        </label>
-        <label>
-          Rol
-          <select name="usuarioRol" [(ngModel)]="usuarioRol" (change)="onUsuarioRolChange()">
-            <option *ngFor="let role of adminUsers()?.roles ?? ['admin', 'supervisor', 'recepcion']" [value]="role">{{ role }}</option>
-          </select>
-        </label>
-        <label *ngIf="usuarioRol === 'recepcion'">
-          Sucursal
-          <select name="usuarioSucursalPermitida" [(ngModel)]="usuarioSucursalPermitida">
-            <option value="luque">luque</option>
-            <option value="aregua">aregua</option>
-            <option value="itaugua">itaugua</option>
-          </select>
-        </label>
-        <label class="checkbox-field">
-          <input type="checkbox" name="usuarioActivo" [(ngModel)]="usuarioActivo">
-          <span>Usuario activo</span>
-        </label>
-        <button type="submit" [disabled]="usuariosLoading()">Crear usuario</button>
-      </form>
-    </section>
-
-    <section class="panel">
-      <div class="panel-title">
-        <h2>Usuarios cargados</h2>
-        <span>{{ adminUsers()?.users?.length ?? 0 }} usuarios</span>
-      </div>
-
-      <div class="table-wrap">
-        <table class="recepcion-table users-table">
-          <thead>
-            <tr>
-              <th>Username</th>
-              <th>Nombre</th>
-              <th>Rol</th>
-              <th>Sucursal</th>
-              <th>Activo</th>
-              <th>Ult. login</th>
-              <th>Password</th>
-              <th>Accion</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr *ngFor="let user of adminUsers()?.users ?? []">
-              <td>{{ user.username }}</td>
-              <td><input type="text" [(ngModel)]="user.nombre" [name]="'admin_nombre_' + user.id"></td>
-              <td>
-                <select [(ngModel)]="user.rol" [name]="'admin_rol_' + user.id">
-                  <option *ngFor="let role of adminUsers()?.roles ?? []" [value]="role">{{ role }}</option>
-                </select>
-              </td>
-              <td>
-                <select [(ngModel)]="user.sucursal_permitida" [name]="'admin_sucursal_' + user.id" [disabled]="user.rol !== 'recepcion'">
-                  <option [ngValue]="null">-</option>
-                  <option value="luque">luque</option>
-                  <option value="aregua">aregua</option>
-                  <option value="itaugua">itaugua</option>
-                </select>
-              </td>
-              <td>
-                <label class="checkbox-field inline-check">
-                  <input type="checkbox" [(ngModel)]="user.activo" [name]="'admin_activo_' + user.id">
-                  <span>{{ user.activo ? 'Si' : 'No' }}</span>
-                </label>
-              </td>
-              <td>{{ user.ultimo_login || '-' }}</td>
-              <td class="password-cell">
-                <ng-container *ngIf="usuarioPasswordEditId !== user.id; else passwordEditor">
-                  <button type="button" class="secondary" (click)="iniciarCambioPassword(user)" [disabled]="usuariosLoading()">Cambiar</button>
-                </ng-container>
-                <ng-template #passwordEditor>
-                  <div class="password-editor">
-                    <input type="password" [(ngModel)]="usuarioPasswordNueva" [name]="'admin_pw_' + user.id" placeholder="Nueva password">
-                    <button type="button" (click)="guardarPasswordUsuario(user)" [disabled]="usuariosLoading()">Guardar</button>
-                    <button type="button" class="secondary" (click)="cancelarCambioPassword()" [disabled]="usuariosLoading()">Cancelar</button>
-                  </div>
-                </ng-template>
-              </td>
-              <td>
-                <button type="button" (click)="guardarUsuario(user)" [disabled]="usuariosLoading()">Guardar</button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </section>
-  </ng-container>
-
   <ng-container *ngIf="vista === 'flota'">
     <p *ngIf="flotaError()" class="alert">{{ flotaError() }}</p>
     <p *ngIf="flotaOk()" class="success-alert">{{ flotaOk() }}</p>
@@ -2159,4 +1767,5 @@
     </section>
   </ng-container>
 </main>
+
 

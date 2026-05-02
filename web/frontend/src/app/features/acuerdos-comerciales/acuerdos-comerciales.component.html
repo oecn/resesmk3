@@ -1,0 +1,403 @@
+<section class="acuerdos-page">
+  <header class="acuerdos-header">
+    <div>
+      <p class="eyebrow">Modulo comercial</p>
+      <h1>Acuerdos comerciales</h1>
+    </div>
+    <button type="button" (click)="limpiarFormulario(); cambiarTab('nuevo')">Nuevo acuerdo</button>
+  </header>
+
+  <p *ngIf="error()" class="alert">{{ error() }}</p>
+  <p *ngIf="ok()" class="success-alert">{{ ok() }}</p>
+  <p *ngIf="loading()" class="muted">Cargando informacion comercial...</p>
+
+  <section class="acuerdos-grid">
+    <article class="acuerdo-kpi">
+      <span>Acuerdos</span>
+      <strong>{{ acuerdos().length }}</strong>
+    </article>
+    <article class="acuerdo-kpi">
+      <span>Punteras</span>
+      <strong>{{ totalPunteras() }}</strong>
+    </article>
+    <article class="acuerdo-kpi">
+      <span>Proveedores</span>
+      <strong>{{ proveedoresCount() }}</strong>
+    </article>
+  </section>
+
+  <nav class="tab-row">
+    <button type="button" [class.active]="activeTab === 'cargados'" (click)="cambiarTab('cargados')">Acuerdos cargados</button>
+    <button type="button" [class.active]="activeTab === 'nuevo'" (click)="cambiarTab('nuevo')">Nuevo acuerdo</button>
+    <button type="button" [class.active]="activeTab === 'proveedores'" (click)="cambiarTab('proveedores')">Proveedores</button>
+    <button type="button" [class.active]="activeTab === 'historial-proveedor'" (click)="cambiarTab('historial-proveedor')">Historial proveedor</button>
+  </nav>
+
+  <section class="acuerdos-layout form-only" *ngIf="activeTab === 'nuevo'">
+    <form class="acuerdos-panel acuerdos-form" (ngSubmit)="guardarAcuerdo()">
+      <div class="panel-title">
+        <h2>{{ editId ? 'Editar acuerdo' : 'Nuevo acuerdo' }}</h2>
+        <span>{{ totalUbicaciones() }} ubicaciones registradas</span>
+      </div>
+
+      <div class="form-grid">
+        <label>
+          Proveedor
+          <input type="text" name="proveedorNombre" [(ngModel)]="proveedorNombre" placeholder="Coca Cola" required>
+        </label>
+        <label>
+          RUC
+          <input type="text" name="proveedorRuc" [(ngModel)]="proveedorRuc" placeholder="80000000-1">
+        </label>
+        <label>
+          Telefono
+          <input type="text" name="proveedorTelefono" [(ngModel)]="proveedorTelefono">
+        </label>
+        <label>
+          Email
+          <input type="email" name="proveedorEmail" [(ngModel)]="proveedorEmail">
+        </label>
+        <label class="wide">
+          Titulo
+          <input type="text" name="titulo" [(ngModel)]="titulo" placeholder="Acuerdo comercial Coca Cola">
+        </label>
+        <label>
+          Retorno mensual %
+          <input type="number" min="0" step="0.01" name="retornoPorcentaje" [(ngModel)]="retornoPorcentaje" required>
+        </label>
+        <label>
+          Duracion meses
+          <input type="number" min="1" step="1" name="duracionMeses" [(ngModel)]="duracionMeses" (ngModelChange)="actualizarVigenciaHasta()" required>
+        </label>
+        <label>
+          Vigencia desde
+          <input type="date" name="vigenciaDesde" [(ngModel)]="vigenciaDesde" (ngModelChange)="actualizarVigenciaHasta()">
+        </label>
+        <label>
+          Vigencia hasta
+          <input type="date" name="vigenciaHasta" [(ngModel)]="vigenciaHasta" readonly>
+        </label>
+        <label>
+          Estado renovacion
+          <select name="estadoRenovacion" [(ngModel)]="estadoRenovacion">
+            <option *ngFor="let estado of estadosRenovacion" [value]="estado.value">{{ estado.label }}</option>
+          </select>
+        </label>
+        <label class="check-row">
+          <input type="checkbox" name="activo" [(ngModel)]="activo">
+          Activo
+        </label>
+        <div class="renewal-origin wide" *ngIf="acuerdoOrigenId">
+          Renovacion del acuerdo #{{ acuerdoOrigenId }}
+        </div>
+        <label class="wide">
+          Observaciones
+          <textarea name="observaciones" rows="3" [(ngModel)]="observaciones" placeholder="Retorno 6%, condiciones principales, notas del acuerdo"></textarea>
+        </label>
+      </div>
+
+      <section class="ubicaciones-block">
+        <div class="sub-title">
+          <h3>Ubicaciones</h3>
+          <button type="button" class="secondary" (click)="agregarUbicacion()">Agregar ubicacion</button>
+        </div>
+        <div class="ubicacion-row" *ngFor="let ubicacion of ubicaciones; let i = index; trackBy: trackByIndex">
+          <label>
+            Sucursal
+            <select [name]="'sucursal' + i" [(ngModel)]="ubicacion.sucursal">
+              <option *ngFor="let sucursal of sucursales" [value]="sucursal.slug">{{ sucursal.nombre }}</option>
+            </select>
+          </label>
+          <label>
+            Tipo
+            <select [name]="'tipoEspacio' + i" [(ngModel)]="ubicacion.tipo_espacio">
+              <option *ngFor="let tipo of tiposEspacio" [value]="tipo.value">{{ tipo.label }}</option>
+            </select>
+          </label>
+          <label class="location-field">
+            Ubicacion
+            <input type="text" [name]="'ubicacion' + i" [(ngModel)]="ubicacion.ubicacion" placeholder="Pasillo 12 zona verduleria">
+          </label>
+          <button type="button" class="danger mini-button" (click)="quitarUbicacion(i)">Quitar</button>
+        </div>
+      </section>
+
+      <section class="historial-block" *ngIf="editId">
+        <div class="sub-title">
+          <h3>Historial de cambios</h3>
+          <button type="button" class="secondary" (click)="cargarHistorial(editId)" [disabled]="historialLoading()">Actualizar</button>
+        </div>
+        <p *ngIf="historialLoading()" class="muted">Cargando historial...</p>
+        <p *ngIf="historialError()" class="empty-inline">{{ historialError() }}</p>
+        <div class="historial-list" *ngIf="historial().length; else emptyHistorial">
+          <article class="historial-item" *ngFor="let item of historial()">
+            <div class="historial-head">
+              <strong>{{ item.accion === 'creacion' ? 'Creacion' : 'Actualizacion' }}</strong>
+              <span>{{ item.usuario || 'sistema' }} - {{ item.creado_en | date:'short' }}</span>
+            </div>
+            <ul>
+              <li *ngFor="let cambio of item.cambios">
+                <strong>{{ cambio.campo }}</strong>
+                <span>{{ formatHistorialValue(cambio.antes) }} -> {{ formatHistorialValue(cambio.despues) }}</span>
+              </li>
+            </ul>
+          </article>
+        </div>
+        <ng-template #emptyHistorial>
+          <p *ngIf="!historialError()" class="empty-inline">Sin cambios registrados para este acuerdo.</p>
+        </ng-template>
+      </section>
+
+      <div class="form-actions">
+        <button type="submit" [disabled]="loading()">{{ editId ? 'Guardar cambios' : 'Guardar acuerdo' }}</button>
+        <button type="button" class="secondary" *ngIf="editId" (click)="limpiarFormulario()" [disabled]="loading()">Cancelar</button>
+      </div>
+    </form>
+  </section>
+
+  <section class="acuerdos-layout cargados-layout" *ngIf="activeTab === 'cargados'">
+    <section class="acuerdos-panel detalle-panel" *ngIf="acuerdoDetalle() as detalle">
+      <div class="panel-title">
+        <div>
+          <h2>{{ detalle.titulo }}</h2>
+          <span>{{ detalle.proveedor_nombre }} - {{ detalle.proveedor_ruc || 'Sin RUC' }}</span>
+        </div>
+        <div class="row-actions">
+          <button type="button" class="secondary mini-button" (click)="verHistorialProveedorDesdeAcuerdo(detalle)">Historial proveedor</button>
+          <button type="button" class="secondary mini-button" (click)="renovarAcuerdo(detalle)" [disabled]="!puedeRenovar(detalle)" [title]="puedeRenovar(detalle) ? 'Renovar acuerdo' : 'Este acuerdo ya fue renovado'">Renovar</button>
+          <button type="button" class="secondary mini-button" (click)="editarAcuerdo(detalle)">Editar</button>
+          <button type="button" class="secondary mini-button" (click)="cerrarDetalleAcuerdo()">Cerrar</button>
+        </div>
+      </div>
+
+      <div class="detalle-grid">
+        <div>
+          <span>Retorno mensual</span>
+          <strong>{{ detalle.retorno_porcentaje }}%</strong>
+        </div>
+        <div>
+          <span>Duracion</span>
+          <strong>{{ detalle.duracion_meses || '-' }} meses</strong>
+        </div>
+        <div>
+          <span>Vigencia desde</span>
+          <strong>{{ detalle.vigencia_desde || '-' }}</strong>
+        </div>
+        <div>
+          <span>Vigencia hasta</span>
+          <strong>{{ detalle.vigencia_hasta || '-' }}</strong>
+        </div>
+        <div>
+          <span>Estado</span>
+          <strong>{{ detalle.activo ? 'Activo' : 'Inactivo' }}</strong>
+        </div>
+        <div>
+          <span>Renovacion</span>
+          <strong>{{ estadoRenovacionLabel(detalle.estado_renovacion) }}</strong>
+        </div>
+        <div>
+          <span>Vencimiento</span>
+          <strong class="expiry-badge" [ngClass]="vencimientoClass(detalle)">{{ vencimientoLabel(detalle) }}</strong>
+        </div>
+      </div>
+
+      <div class="detalle-contacto">
+        <span>Telefono: {{ detalle.proveedor_telefono || 'Sin telefono' }}</span>
+        <span>Email: {{ detalle.proveedor_email || 'Sin email' }}</span>
+        <span *ngIf="detalle.acuerdo_origen_id">Origen: acuerdo #{{ detalle.acuerdo_origen_id }}</span>
+        <span *ngIf="detalle.renovado_por_acuerdo_id">Renovado por: acuerdo #{{ detalle.renovado_por_acuerdo_id }}</span>
+      </div>
+
+      <section class="detalle-section">
+        <h3>Observaciones</h3>
+        <p>{{ detalle.observaciones || 'Sin observaciones' }}</p>
+      </section>
+
+      <section class="detalle-section">
+        <h3>Ubicaciones</h3>
+        <div class="detalle-ubicaciones">
+          <article *ngFor="let ubicacion of detalle.ubicaciones">
+            <strong>{{ tipoEspacioLabel(ubicacion.tipo_espacio) }}</strong>
+            <span>{{ ubicacion.sucursal }} - {{ ubicacion.ubicacion }}</span>
+            <small *ngIf="ubicacion.detalle">{{ ubicacion.detalle }}</small>
+          </article>
+        </div>
+      </section>
+    </section>
+
+    <section class="acuerdos-panel">
+      <div class="panel-title">
+        <h2>Buscar acuerdos</h2>
+        <span>{{ acuerdos().length }} registros</span>
+      </div>
+      <div class="search-row">
+        <input type="search" name="busqueda" [(ngModel)]="busqueda" placeholder="Proveedor, RUC, ubicacion">
+        <button type="button" (click)="cargarAcuerdos()" [disabled]="loading()">Buscar</button>
+      </div>
+
+      <div class="agreement-list" *ngIf="acuerdos().length; else emptyAcuerdos">
+        <article class="agreement-item" *ngFor="let acuerdo of acuerdos()">
+          <div class="agreement-head">
+            <div>
+              <strong>{{ acuerdo.proveedor_nombre }}</strong>
+              <span>{{ acuerdo.proveedor_ruc || 'Sin RUC' }}</span>
+            </div>
+            <div class="row-actions">
+              <button type="button" class="secondary mini-button" (click)="verAcuerdo(acuerdo)">Ver</button>
+              <button type="button" class="secondary mini-button" (click)="verHistorialProveedorDesdeAcuerdo(acuerdo)">Historial</button>
+              <button type="button" class="secondary mini-button" (click)="renovarAcuerdo(acuerdo)" [disabled]="!puedeRenovar(acuerdo)" [title]="puedeRenovar(acuerdo) ? 'Renovar acuerdo' : 'Este acuerdo ya fue renovado'">Renovar</button>
+              <button type="button" class="secondary mini-button" (click)="editarAcuerdo(acuerdo)">Editar</button>
+            </div>
+          </div>
+          <div class="agreement-meta">
+            <span>Retorno {{ acuerdo.retorno_porcentaje }}%</span>
+            <span>{{ acuerdo.duracion_meses || '-' }} meses</span>
+            <span>{{ estadoRenovacionLabel(acuerdo.estado_renovacion) }}</span>
+            <span class="expiry-badge" [ngClass]="vencimientoClass(acuerdo)">{{ vencimientoLabel(acuerdo) }}</span>
+            <span>{{ acuerdo.punteras_count }} punteras</span>
+            <span>{{ acuerdo.ubicaciones_count }} ubicaciones</span>
+          </div>
+          <ul>
+            <li *ngFor="let ubicacion of acuerdo.ubicaciones">
+              <strong>{{ tipoEspacioLabel(ubicacion.tipo_espacio) }}</strong>
+              <span>{{ ubicacion.sucursal }} - {{ ubicacion.ubicacion }}</span>
+            </li>
+          </ul>
+        </article>
+      </div>
+      <ng-template #emptyAcuerdos>
+        <div class="empty-state">
+          <strong>Sin acuerdos cargados</strong>
+          <span>Carga el proveedor, retorno y las ubicaciones principales.</span>
+        </div>
+      </ng-template>
+    </section>
+  </section>
+
+  <section class="acuerdos-layout proveedores-layout" *ngIf="activeTab === 'proveedores'">
+    <form class="acuerdos-panel acuerdos-form" (ngSubmit)="guardarProveedorBase()">
+      <div class="panel-title">
+        <h2>{{ proveedorEditId ? 'Editar proveedor' : 'Nuevo proveedor' }}</h2>
+        <span>Referencia comercial</span>
+      </div>
+      <div class="form-grid">
+        <label>
+          Nombre
+          <input type="text" name="proveedorBaseNombre" [(ngModel)]="proveedorBaseNombre" placeholder="Coca Cola" required>
+        </label>
+        <label>
+          RUC
+          <input type="text" name="proveedorBaseRuc" [(ngModel)]="proveedorBaseRuc" placeholder="80000000-1">
+        </label>
+        <label>
+          Telefono
+          <input type="text" name="proveedorBaseTelefono" [(ngModel)]="proveedorBaseTelefono">
+        </label>
+        <label>
+          Email
+          <input type="email" name="proveedorBaseEmail" [(ngModel)]="proveedorBaseEmail">
+        </label>
+        <label class="check-row">
+          <input type="checkbox" name="proveedorBaseActivo" [(ngModel)]="proveedorBaseActivo">
+          Activo
+        </label>
+      </div>
+      <div class="form-actions">
+        <button type="submit" [disabled]="loading()">{{ proveedorEditId ? 'Guardar cambios' : 'Guardar proveedor' }}</button>
+        <button type="button" class="secondary" *ngIf="proveedorEditId" (click)="limpiarProveedorBase()" [disabled]="loading()">Cancelar</button>
+      </div>
+    </form>
+
+    <section class="acuerdos-panel">
+      <div class="panel-title">
+        <h2>Buscar proveedores</h2>
+        <span>{{ proveedores().length }} registros</span>
+      </div>
+      <div class="search-row">
+        <input type="search" name="proveedorBusqueda" [(ngModel)]="proveedorBusqueda" placeholder="Nombre, RUC, telefono">
+        <button type="button" (click)="cargarProveedores()" [disabled]="loading()">Buscar</button>
+      </div>
+      <div class="agreement-list" *ngIf="proveedores().length; else emptyProveedores">
+        <article class="agreement-item" *ngFor="let proveedor of proveedores()">
+          <div class="agreement-head">
+            <div>
+              <strong>{{ proveedor.nombre }}</strong>
+              <span>{{ proveedor.ruc || 'Sin RUC' }}</span>
+            </div>
+            <div class="row-actions">
+              <button type="button" class="secondary mini-button" (click)="usarProveedorEnAcuerdo(proveedor)">Usar</button>
+              <button type="button" class="secondary mini-button" (click)="verHistorialProveedor(proveedor)">Historial</button>
+              <button type="button" class="secondary mini-button" (click)="editarProveedorBase(proveedor)">Editar</button>
+            </div>
+          </div>
+          <div class="agreement-meta">
+            <span>{{ proveedor.activo ? 'Activo' : 'Inactivo' }}</span>
+            <span>{{ proveedor.acuerdos_count || 0 }} acuerdos</span>
+            <span>{{ proveedor.telefono || 'Sin telefono' }}</span>
+          </div>
+          <p class="provider-email">{{ proveedor.email || 'Sin email' }}</p>
+        </article>
+      </div>
+      <ng-template #emptyProveedores>
+        <div class="empty-state">
+          <strong>Sin proveedores cargados</strong>
+          <span>Carga proveedores para usarlos luego en acuerdos.</span>
+        </div>
+      </ng-template>
+    </section>
+  </section>
+
+  <section class="acuerdos-layout cargados-layout" *ngIf="activeTab === 'historial-proveedor'">
+    <section class="acuerdos-panel">
+      <div class="panel-title">
+        <div>
+          <h2>Historial por proveedor</h2>
+          <span>{{ historialProveedorNombre() || 'Selecciona un proveedor' }}</span>
+        </div>
+        <button type="button" class="secondary mini-button" (click)="cambiarTab('proveedores')">Elegir proveedor</button>
+      </div>
+      <p *ngIf="historialProveedorError()" class="empty-inline">{{ historialProveedorError() }}</p>
+
+      <div class="agreement-list" *ngIf="historialProveedor().length; else emptyHistorialProveedor">
+        <article class="agreement-item historial-provider-item" *ngFor="let acuerdo of historialProveedor()">
+          <div class="agreement-head">
+            <div>
+              <strong>#{{ acuerdo.id }} - {{ acuerdo.titulo }}</strong>
+              <span>{{ acuerdo.vigencia_desde || '-' }} a {{ acuerdo.vigencia_hasta || '-' }}</span>
+            </div>
+            <div class="row-actions">
+              <button type="button" class="secondary mini-button" (click)="verAcuerdo(acuerdo); cambiarTab('cargados')">Ver</button>
+              <button type="button" class="secondary mini-button" (click)="renovarAcuerdo(acuerdo)" [disabled]="!puedeRenovar(acuerdo)" [title]="puedeRenovar(acuerdo) ? 'Renovar acuerdo' : 'Este acuerdo ya fue renovado'">Renovar</button>
+              <button type="button" class="secondary mini-button" (click)="editarAcuerdo(acuerdo)">Editar</button>
+            </div>
+          </div>
+          <div class="agreement-meta">
+            <span>Retorno {{ acuerdo.retorno_porcentaje }}%</span>
+            <span>{{ acuerdo.duracion_meses || '-' }} meses</span>
+            <span>{{ estadoRenovacionLabel(acuerdo.estado_renovacion) }}</span>
+            <span class="expiry-badge" [ngClass]="vencimientoClass(acuerdo)">{{ vencimientoLabel(acuerdo) }}</span>
+            <span *ngIf="acuerdo.acuerdo_origen_id">Origen #{{ acuerdo.acuerdo_origen_id }}</span>
+            <span *ngIf="acuerdo.renovado_por_acuerdo_id">Renovado por #{{ acuerdo.renovado_por_acuerdo_id }}</span>
+          </div>
+          <div class="historial-chain">
+            <span>{{ acuerdo.activo ? 'Activo' : 'Inactivo' }}</span>
+            <span>{{ acuerdo.ubicaciones_count }} ubicaciones</span>
+            <span>{{ acuerdo.punteras_count }} punteras</span>
+          </div>
+          <ul>
+            <li *ngFor="let ubicacion of acuerdo.ubicaciones">
+              <strong>{{ tipoEspacioLabel(ubicacion.tipo_espacio) }}</strong>
+              <span>{{ ubicacion.sucursal }} - {{ ubicacion.ubicacion }}</span>
+            </li>
+          </ul>
+        </article>
+      </div>
+      <ng-template #emptyHistorialProveedor>
+        <div class="empty-state">
+          <strong>Sin historial seleccionado</strong>
+          <span>Usa el boton Historial desde un proveedor o desde un acuerdo cargado.</span>
+        </div>
+      </ng-template>
+    </section>
+  </section>
+</section>

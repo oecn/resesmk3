@@ -1,0 +1,145 @@
+<section class="admin-users-page">
+  <p *ngIf="error()" class="alert">{{ error() }}</p>
+  <p *ngIf="ok()" class="success-alert">{{ ok() }}</p>
+  <p *ngIf="loading()" class="muted">Cargando o guardando usuarios...</p>
+
+  <section class="panel">
+    <div class="panel-title">
+      <h2>Nuevo usuario</h2>
+      <span>Solo administradores</span>
+    </div>
+    <form class="form-grid users-form" (ngSubmit)="crearUsuario()">
+      <label>
+        Nombre
+        <input type="text" name="usuarioNombre" [(ngModel)]="usuarioNombre" required>
+      </label>
+      <label>
+        Username
+        <input type="text" name="usuarioUsername" [(ngModel)]="usuarioUsername" required>
+      </label>
+      <label>
+        Password inicial
+        <input type="password" name="usuarioPassword" [(ngModel)]="usuarioPassword" required>
+      </label>
+      <label>
+        Rol
+        <select name="usuarioRol" [(ngModel)]="usuarioRol" (change)="onUsuarioRolChange()">
+          <option *ngFor="let role of adminUsers()?.roles ?? ['admin', 'supervisor', 'recepcion']" [value]="role">{{ role }}</option>
+        </select>
+      </label>
+      <label *ngIf="usuarioRol === 'recepcion'">
+        Sucursal
+        <select name="usuarioSucursalPermitida" [(ngModel)]="usuarioSucursalPermitida">
+          <option value="luque">luque</option>
+          <option value="aregua">aregua</option>
+          <option value="itaugua">itaugua</option>
+        </select>
+      </label>
+      <label class="checkbox-field">
+        <input type="checkbox" name="usuarioActivo" [(ngModel)]="usuarioActivo">
+        <span>Usuario activo</span>
+      </label>
+      <div class="module-field">
+        <span>Modulos</span>
+        <button type="button" class="secondary" (click)="abrirEditorModulos()" [disabled]="loading()">Elegir modulos</button>
+        <small>{{ modulosResumen(usuarioModulosPermitidos) }}</small>
+      </div>
+      <button type="submit" [disabled]="loading()">Crear usuario</button>
+    </form>
+  </section>
+
+  <section class="panel">
+    <div class="panel-title">
+      <h2>Usuarios cargados</h2>
+      <span>{{ adminUsers()?.users?.length ?? 0 }} usuarios</span>
+    </div>
+
+    <div class="table-wrap">
+      <table class="users-table">
+        <thead>
+          <tr>
+            <th>Username</th>
+            <th>Nombre</th>
+            <th>Rol</th>
+            <th>Sucursal</th>
+            <th>Modulos</th>
+            <th>Activo</th>
+            <th>Ult. login</th>
+            <th>Password</th>
+            <th>Accion</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let user of adminUsers()?.users ?? []">
+            <td>{{ user.username }}</td>
+            <td><input type="text" [(ngModel)]="user.nombre" [name]="'admin_nombre_' + user.id"></td>
+            <td>
+              <select [(ngModel)]="user.rol" [name]="'admin_rol_' + user.id" (change)="onUserRolChange(user)">
+                <option *ngFor="let role of adminUsers()?.roles ?? []" [value]="role">{{ role }}</option>
+              </select>
+            </td>
+            <td>
+              <select [(ngModel)]="user.sucursal_permitida" [name]="'admin_sucursal_' + user.id" [disabled]="user.rol !== 'recepcion'">
+                <option [ngValue]="null">-</option>
+                <option value="luque">luque</option>
+                <option value="aregua">aregua</option>
+                <option value="itaugua">itaugua</option>
+              </select>
+            </td>
+            <td class="modules-cell">
+              <button type="button" class="secondary" (click)="abrirEditorModulos(user)" [disabled]="loading()">Editar</button>
+              <small>{{ modulosResumen(user.modulos_permitidos) }}</small>
+            </td>
+            <td>
+              <label class="checkbox-field inline-check">
+                <input type="checkbox" [(ngModel)]="user.activo" [name]="'admin_activo_' + user.id">
+                <span>{{ user.activo ? 'Si' : 'No' }}</span>
+              </label>
+            </td>
+            <td>{{ user.ultimo_login || '-' }}</td>
+            <td class="password-cell">
+              <ng-container *ngIf="usuarioPasswordEditId !== user.id; else passwordEditor">
+                <button type="button" class="secondary" (click)="iniciarCambioPassword(user)" [disabled]="loading()">Cambiar</button>
+              </ng-container>
+              <ng-template #passwordEditor>
+                <div class="password-editor">
+                  <input type="password" [(ngModel)]="usuarioPasswordNueva" [name]="'admin_pw_' + user.id" placeholder="Nueva password">
+                  <button type="button" (click)="guardarPasswordUsuario(user)" [disabled]="loading()">Guardar</button>
+                  <button type="button" class="secondary" (click)="cancelarCambioPassword()" [disabled]="loading()">Cancelar</button>
+                </div>
+              </ng-template>
+            </td>
+            <td>
+              <button type="button" (click)="guardarUsuario(user)" [disabled]="loading()">Guardar</button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="modal-backdrop" *ngIf="moduleEditorOpen" (click)="cerrarEditorModulos()">
+    <section class="module-modal" (click)="$event.stopPropagation()">
+      <div class="panel-title">
+        <h2>Modulos permitidos</h2>
+        <span>{{ moduleEditorUser?.username || 'Nuevo usuario' }}</span>
+      </div>
+
+      <div class="module-list">
+        <label class="checkbox-field module-check" *ngFor="let module of adminUsers()?.modules ?? []">
+          <input
+            type="checkbox"
+            [checked]="moduloChecked(module.key)"
+            [disabled]="module.key === 'usuarios' && ((moduleEditorUser?.rol ?? usuarioRol) !== 'admin')"
+            (change)="toggleModulo(module.key, $any($event.target).checked)">
+          <span>{{ module.label }}</span>
+        </label>
+      </div>
+
+      <div class="modal-actions">
+        <button type="button" class="secondary" (click)="cerrarEditorModulos()">Cancelar</button>
+        <button type="button" (click)="guardarEditorModulos()">Guardar permisos</button>
+      </div>
+    </section>
+  </section>
+</section>

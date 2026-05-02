@@ -6,7 +6,7 @@ import {
   RecepcionDistribucion,
   RecepcionMenudencia,
   RecepcionSucursalSlug,
-} from '../../../shared/models/dashboard.models';
+} from './recepcion.models';
 
 @Injectable({ providedIn: 'root' })
 export class RecepcionService {

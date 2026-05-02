@@ -1,0 +1,46 @@
+:host {
+  display: block;
+  min-height: 100vh;
+  color: #17202a;
+  font-family: Inter, "Segoe UI", Arial, sans-serif;
+}
+
+.auth-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background:
+    linear-gradient(180deg, rgba(17, 22, 61, 0.28), rgba(17, 22, 61, 0.42)),
+    url('/assets/el-cacique-login-bg.png'),
+    linear-gradient(180deg, #2f3196 0%, #2b2d8d 100%);
+  background-position: center center;
+  background-repeat: no-repeat;
+  background-size: cover, cover, cover;
+}
+
+.auth-login-wrap {
+  width: min(420px, 100%);
+  display: grid;
+  gap: 12px;
+}
+
+.auth-footnote {
+  padding: 16px 20px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 12px;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.92);
+  background: rgba(19, 25, 73, 0.36);
+  backdrop-filter: blur(8px);
+}
+
+.auth-footnote p {
+  margin: 0;
+}
+
+@media (max-width: 720px) {
+  .auth-shell {
+    padding: 16px;
+  }
+}

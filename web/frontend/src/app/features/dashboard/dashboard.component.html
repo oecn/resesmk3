@@ -1,0 +1,188 @@
+<section class="dashboard-page">
+  <section class="topbar">
+    <div>
+      <p class="eyebrow">Solo lectura</p>
+      <h1>KPIs de Reces</h1>
+      <p class="subtitle">Compras, faena, distribucion, rendimiento y menudencias.</p>
+      <div class="status-row">
+        <span>{{ rangoTexto() }}</span>
+        <span *ngIf="ultimaActualizacion()">Actualizado {{ ultimaActualizacion() }}</span>
+      </div>
+    </div>
+
+    <form class="filters" (ngSubmit)="cargar()">
+      <label>
+        Periodo
+        <select name="periodoSeleccionado" [(ngModel)]="periodoSeleccionado" (change)="aplicarPeriodo()">
+          <option value="todos">Todos</option>
+          <option value="mes-actual">Este mes</option>
+          <option value="mes-anterior">Mes anterior</option>
+          <option value="trimestre-actual">Este trimestre</option>
+          <option value="trimestre-anterior">Trimestre anterior</option>
+          <option value="ano-actual">Este ano</option>
+          <option value="ano-anterior">Ano anterior</option>
+        </select>
+      </label>
+      <label>
+        Desde
+        <input type="date" name="desde" [(ngModel)]="desde">
+      </label>
+      <label>
+        Hasta
+        <input type="date" name="hasta" [(ngModel)]="hasta">
+      </label>
+      <button type="submit" [disabled]="loading()">Actualizar</button>
+      <button type="button" class="secondary" (click)="limpiarFiltros()" [disabled]="loading()">Limpiar</button>
+    </form>
+  </section>
+
+  <p *ngIf="error()" class="alert">{{ error() }}</p>
+  <p *ngIf="loading()" class="muted">Cargando informacion...</p>
+
+  <ng-container *ngIf="data() as dashboard">
+    <section class="insight-grid">
+      <article class="insight-card">
+        <div>
+          <span>Reses en Camara</span>
+          <strong>{{ (dashboard.resumen.reses_camara | fmtNumber) }}</strong>
+        </div>
+        <p>Faenadas pendientes de distribuir.</p>
+      </article>
+      <article class="insight-card">
+        <div>
+          <span>Reses sin Faenar</span>
+          <strong>{{ (dashboard.resumen.reses_sin_faenar | fmtNumber) }}</strong>
+        </div>
+        <p>Compra pendiente de faena.</p>
+      </article>
+      <article class="insight-card">
+        <div>
+          <span>Lotes pendientes</span>
+          <strong>{{ (dashboard.resumen.lotes_pendientes | fmtNumber) }}</strong>
+        </div>
+        <p>Lotes con saldo sin faenar.</p>
+      </article>
+    </section>
+
+    <section class="kpi-grid">
+      <article class="kpi-card" *ngIf="visibleKpis.lotes"><span>Lotes</span><strong>{{ (dashboard.resumen.lotes | fmtNumber) }}</strong></article>
+      <article class="kpi-card" *ngIf="visibleKpis.reces_compradas"><span>Reces compradas</span><strong>{{ (dashboard.resumen.reces_compradas | fmtNumber) }}</strong></article>
+      <article class="kpi-card" *ngIf="visibleKpis.reces_faenadas"><span>Reces faenadas</span><strong>{{ (dashboard.resumen.reces_faenadas | fmtNumber) }}</strong></article>
+      <article class="kpi-card" *ngIf="visibleKpis.reces_distribuidas"><span>Reces distribuidas</span><strong>{{ (dashboard.resumen.reces_distribuidas | fmtNumber) }}</strong></article>
+      <article class="kpi-card" *ngIf="visibleKpis.kg_distribuidos"><span>Kg distribuidos</span><strong>{{ (dashboard.resumen.kg_distribuidos | fmtNumber:2) }}</strong></article>
+      <article class="kpi-card" *ngIf="visibleKpis.monto_total"><span>Monto total</span><strong>{{ (dashboard.resumen.monto_total | fmtMoney) }}</strong></article>
+      <article class="kpi-card" *ngIf="visibleKpis.costo_kg_promedio"><span>Costo kg promedio</span><strong>{{ (dashboard.resumen.costo_kg_promedio | fmtMoney) }}</strong></article>
+    </section>
+
+    <section class="kpi-menu-wrap">
+      <button type="button" class="burger-button" (click)="toggleKpiMenu()" [class.active]="kpiMenuOpen">Otros KPIs</button>
+      <div class="kpi-menu" *ngIf="kpiMenuOpen">
+        <div class="panel-title">
+          <h2>Mostrar KPIs</h2>
+          <span>Elegir visibles</span>
+        </div>
+        <label *ngFor="let kpi of optionalKpis">
+          <input type="checkbox" [checked]="visibleKpis[kpi.key]" (change)="toggleKpi(kpi.key, $any($event.target).checked)">
+          {{ kpi.label }}
+        </label>
+      </div>
+    </section>
+
+    <section class="panel-grid">
+      <article class="panel">
+        <div class="panel-title"><h2>Compras por empresa</h2><span>{{ dashboard.comprasPorEmpresa.length }} empresas</span></div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Empresa</th><th>Reces</th><th>Kg compra</th><th>Monto</th></tr></thead>
+            <tbody>
+              <tr *ngFor="let row of dashboard.comprasPorEmpresa">
+                <td>{{ row.empresa }}</td>
+                <td>{{ (row.reces | fmtNumber) }}</td>
+                <td>{{ (row.kg_compra | fmtNumber:2) }}</td>
+                <td>{{ (row.monto | fmtMoney) }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </article>
+
+      <article class="panel">
+        <div class="panel-title"><h2>Distribucion por local</h2><span>Kg y reces</span></div>
+        <div class="bars">
+          <div class="bar-row" *ngFor="let row of dashboard.distribucionesPorLocal">
+            <div class="bar-label"><strong>{{ row.local }}</strong><span>{{ (row.kg | fmtNumber:2) }} kg - {{ (row.reces | fmtNumber) }} reces</span></div>
+            <div class="bar-track"><div class="bar-fill" [style.width]="barWidth(row, maxDistribucionKg())"></div></div>
+          </div>
+        </div>
+      </article>
+
+      <article class="panel">
+        <div class="panel-title"><h2>Menudencias por sucursal</h2><span>Kg y unidades</span></div>
+        <div class="bars accent">
+          <div class="bar-row" *ngFor="let row of dashboard.menudenciasPorSucursal">
+            <div class="bar-label"><strong>{{ row.sucursal }}</strong><span>{{ (row.kg | fmtNumber:2) }} kg - {{ (row.unidades | fmtNumber) }} unidades</span></div>
+            <div class="bar-track"><div class="bar-fill" [style.width]="barWidth(row, maxMenudenciaKg())"></div></div>
+          </div>
+        </div>
+      </article>
+    </section>
+
+    <section class="menudencias-grid">
+      <article class="panel">
+        <div class="panel-title"><h2>Top menudencias</h2><span>Por kg</span></div>
+        <div class="bars product-bars">
+          <div class="bar-row" *ngFor="let row of dashboard.topMenudencias">
+            <div class="bar-label"><strong>{{ row.producto }}</strong><span>{{ (row.kg | fmtNumber:2) }} kg - {{ (row.unidades | fmtNumber) }} unidades</span></div>
+            <div class="bar-track"><div class="bar-fill product" [style.width]="barWidth(row, maxTopMenudenciaKg())"></div></div>
+            <small>{{ (row.kg_por_unidad | fmtNumber:3) }} kg/unidad</small>
+          </div>
+        </div>
+      </article>
+
+      <article class="panel">
+        <div class="panel-title"><h2>Comparativo por producto</h2><span>Top {{ dashboard.menudenciasPorProductoSucursal.length }}</span></div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Producto</th><th>Total kg</th><th>Total unid.</th><th>Aregua kg</th><th>Luque kg</th><th>Itaugua kg</th></tr></thead>
+            <tbody>
+              <tr *ngFor="let row of dashboard.menudenciasPorProductoSucursal">
+                <td>{{ row.producto }}</td>
+                <td>{{ (row.kg_total | fmtNumber:2) }}</td>
+                <td>{{ (row.unidades_total | fmtNumber) }}</td>
+                <td>{{ (row.aregua_kg | fmtNumber:2) }}</td>
+                <td>{{ (row.luque_kg | fmtNumber:2) }}</td>
+                <td>{{ (row.itaugua_kg | fmtNumber:2) }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </article>
+    </section>
+
+    <section class="panel full">
+      <div class="panel-title"><h2>Resumen por lote</h2><span>{{ lotesFiltrados().length }} de {{ dashboard.lotes.length }} registros</span></div>
+      <div class="table-tools">
+        <label>Buscar lote o empresa <input type="search" name="busqueda" [(ngModel)]="busqueda" placeholder="Ej: Corral, 2026-04, lote"></label>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Fecha</th><th>Lote</th><th>Empresa</th><th>Compra</th><th>Faenado</th><th>Distribuido</th><th>Kg dist.</th><th>Costo kg</th><th>Distribuido %</th><th>Rend. %</th></tr></thead>
+          <tbody>
+            <tr *ngFor="let lote of lotesFiltrados()">
+              <td>{{ lote.fecha }}</td>
+              <td>{{ lote.lote }}</td>
+              <td>{{ lote.empresa }}</td>
+              <td>{{ (lote.cantcompra | fmtNumber) }}</td>
+              <td>{{ (lote.faenado | fmtNumber) }}</td>
+              <td>{{ (lote.distribuido | fmtNumber) }}</td>
+              <td>{{ (lote.kg | fmtNumber:2) }}</td>
+              <td>{{ (lote.costokg | fmtMoney) }}</td>
+              <td>{{ (lote.pct_distribuido | fmtNumber:2) }}%</td>
+              <td>{{ (lote.rend_pct | fmtNumber:2) }}%</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </ng-container>
+</section>

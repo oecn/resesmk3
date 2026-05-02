@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
 import { ApiService } from '../../../core/http/api.service';
-import { CompraFaenaLote, CompraFaenaRow, ComprasFaenaData } from '../../../shared/models/dashboard.models';
+import { CompraFaenaLote, CompraFaenaRow, ComprasFaenaData } from './compras-faena.models';
 
 @Injectable({ providedIn: 'root' })
 export class ComprasFaenaService {

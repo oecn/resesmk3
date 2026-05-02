@@ -1,0 +1,14 @@
+<main class="auth-shell">
+  <section class="auth-login-wrap">
+    <app-login
+      [(username)]="username"
+      [(password)]="password"
+      [loading]="loading()"
+      [error]="error()"
+      (loginRequested)="login()">
+    </app-login>
+    <section class="auth-footnote">
+      <p>Acceso interno para recepcion, distribucion y administracion.</p>
+    </section>
+  </section>
+</main>

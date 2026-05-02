@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import base64
 import csv
@@ -19,6 +19,8 @@ import psycopg2.extras
 
 from web.backend.config import DATABASE_URL, EMPRESAS
 from web.backend.auth.services.auth_service import AuthError, AuthService, PermissionDenied
+from web.backend.modules import discover_routes
+from web.backend.routing import RequestContext
 
 try:
     import openpyxl
@@ -151,7 +153,7 @@ def _parse_bool(value, default=False):
     if isinstance(value, bool):
         return value
     text = str(value).strip().lower()
-    if text in {"1", "true", "t", "si", "sí", "y", "yes"}:
+    if text in {"1", "true", "t", "si", "sÃ­", "y", "yes"}:
         return True
     if text in {"0", "false", "f", "no", "n"}:
         return False
@@ -3357,6 +3359,7 @@ class DashboardRepository:
 class DashboardHandler(BaseHTTPRequestHandler):
     repo = DashboardRepository(DATABASE_URL)
     auth = AuthService(DATABASE_URL)
+    module_routes = discover_routes()
 
     def do_OPTIONS(self):
         self._send_empty(204)
@@ -3364,6 +3367,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         parsed = urlparse(self.path)
         query = parse_qs(parsed.query)
+        if self._dispatch_module_route("GET", parsed, query):
+            return
         if parsed.path == "/api/health":
             return self._send_json({"ok": True})
         if parsed.path == "/api/auth/me":
@@ -3600,6 +3605,14 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         parsed = urlparse(self.path)
+        query = parse_qs(parsed.query)
+        if self._has_module_route("POST", parsed.path):
+            try:
+                payload = self._read_json()
+            except ValueError as exc:
+                return self._send_json({"error": str(exc)}, status=400)
+            if self._dispatch_module_route("POST", parsed, query, payload):
+                return
         try:
             payload = self._read_json()
             if parsed.path == "/api/auth/login":
@@ -3633,6 +3646,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                             payload.get("rol"),
                             payload.get("sucursal_permitida"),
                             bool(payload.get("activo", True)),
+                            payload.get("modulos_permitidos"),
                         )
                     },
                     status=201,
@@ -3723,6 +3737,14 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
     def do_PUT(self):
         parsed = urlparse(self.path)
+        query = parse_qs(parsed.query)
+        if self._has_module_route("PUT", parsed.path):
+            try:
+                payload = self._read_json()
+            except ValueError as exc:
+                return self._send_json({"error": str(exc)}, status=400)
+            if self._dispatch_module_route("PUT", parsed, query, payload):
+                return
         try:
             payload = self._read_json()
             if parsed.path == "/api/auth/users":
@@ -3735,6 +3757,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                             payload.get("rol"),
                             bool(payload.get("activo", True)),
                             payload.get("sucursal_permitida"),
+                            payload.get("modulos_permitidos"),
                         )
                     }
                 )
@@ -3769,6 +3792,9 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
     def do_DELETE(self):
         parsed = urlparse(self.path)
+        query = parse_qs(parsed.query)
+        if self._dispatch_module_route("DELETE", parsed, query):
+            return
         try:
             if parsed.path == "/api/distribuciones":
                 self._require_roles({"admin", "supervisor"})
@@ -3831,6 +3857,28 @@ class DashboardHandler(BaseHTTPRequestHandler):
             return {}
         raw = self.rfile.read(length).decode("utf-8")
         return json.loads(raw)
+
+    def _has_module_route(self, method: str, path: str) -> bool:
+        return any(route.matches(method, path) for route in self.module_routes)
+
+    def _dispatch_module_route(self, method: str, parsed, query, payload=None) -> bool:
+        for route in self.module_routes:
+            if not route.matches(method, parsed.path):
+                continue
+            try:
+                result = route.handler(RequestContext(self, parsed, query, payload))
+                if result is not None:
+                    self._send_json(result)
+                return True
+            except ValueError as exc:
+                self._send_json({"error": str(exc)}, status=400)
+            except PermissionDenied as exc:
+                self._send_json({"error": str(exc)}, status=403)
+            except AuthError as exc:
+                self._send_json({"error": str(exc)}, status=401)
+            except Exception as exc:
+                self._send_json({"error": str(exc)}, status=500)
+            return True
 
     def _headers(self):
         origin = self.headers.get("Origin", "")
@@ -3909,3 +3957,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

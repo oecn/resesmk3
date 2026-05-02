@@ -1,5 +1,15 @@
 export type UserRole = 'admin' | 'supervisor' | 'recepcion';
 export type SucursalSlug = 'aregua' | 'luque' | 'itaugua';
+export type AppModuleKey =
+  | 'dashboard'
+  | 'compras-faena'
+  | 'resumenes'
+  | 'recepcion'
+  | 'distribuciones'
+  | 'usuarios'
+  | 'flota'
+  | 'archivos-directorio'
+  | 'acuerdos-comerciales';
 
 export interface CurrentUser {
   id: number;
@@ -8,6 +18,7 @@ export interface CurrentUser {
   rol: UserRole;
   activo: boolean;
   sucursal_permitida?: SucursalSlug | null;
+  modulos_permitidos?: AppModuleKey[];
 }
 
 export interface AdminUser extends CurrentUser {

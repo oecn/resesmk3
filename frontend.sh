@@ -25,7 +25,7 @@
 set -euo pipefail
 
 # ── Configuración ────────────────────────────────────────────
-NODE_REQUIRED_MAJOR=18
+NODE_REQUIRED_MAJOR=20
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FRONTEND_DIR="$PROJECT_DIR/web/frontend"
@@ -184,7 +184,7 @@ NGINX
         warn "Sitio 'default' de nginx desactivado (conflicto con puerto 80)"
     fi
 
-    nginx -t 2>&1 | grep -v "^$" || die "Configuración de nginx inválida"
+    nginx -t || die "Configuración de nginx inválida"
     ok "nginx configurado en $NGINX_AVAILABLE"
 }
 
@@ -232,25 +232,24 @@ cmd_install() {
     echo
     local ip
     ip=$(hostname -I | awk '{print $1}')
-    echo -e "  Accedé desde la red → ${GREEN}http://${ip}${SERVE_PORT:+:${SERVE_PORT}}${RESET}"
-    [[ "$SERVE_PORT" == "80" ]] && echo -e "  Accedé desde la red → ${GREEN}http://${ip}${RESET}"
+    if [[ "$SERVE_PORT" == "80" ]]; then
+        echo -e "  Accedé desde la red → ${GREEN}http://${ip}${RESET}"
+    else
+        echo -e "  Accedé desde la red → ${GREEN}http://${ip}:${SERVE_PORT}${RESET}"
+    fi
 }
 
 cmd_deploy() {
     require_root "deploy"
     section "Redesplegando frontend"
 
-    # Permitir cambiar la API_URL antes del redeploy
-    if [[ -n "${API_URL:-}" ]]; then
-        patch_environment
-    fi
-
+    patch_environment
     build_frontend
     WEBROOT=$(deploy_files)
 
     # Recargar nginx sin downtime
     systemctl reload nginx
-    ok "Redeploy completado y nginx recargado"
+    ok "Redeploy completado → ${WEBROOT}  (API: ${API_URL})"
 }
 
 cmd_start() {
@@ -268,7 +267,7 @@ cmd_stop() {
 
 cmd_restart() {
     require_root "restart"
-    nginx -t 2>&1 | grep -v "^$"
+    nginx -t || die "Configuración de nginx inválida"
     systemctl restart nginx
     ok "nginx reiniciado"
 }

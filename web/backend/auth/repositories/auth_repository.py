@@ -17,6 +17,17 @@ class AuthRepository:
     def _connect(self):
         return psycopg2.connect(self.db_url, connect_timeout=5)
 
+    def ensure_schema(self) -> None:
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    ALTER TABLE usuarios
+                    ADD COLUMN IF NOT EXISTS modulos_permitidos JSONB NULL
+                    """
+                )
+            conn.commit()
+
     def get_user_by_username(self, username: str) -> dict[str, Any] | None:
         with self._connect() as conn:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
@@ -30,6 +41,7 @@ class AuthRepository:
                         u.activo,
                         u.ultimo_login,
                         u.sucursal_permitida,
+                        u.modulos_permitidos,
                         r.nombre AS rol
                     FROM usuarios u
                     JOIN roles r ON r.id = u.rol_id
@@ -53,6 +65,7 @@ class AuthRepository:
                         u.activo,
                         u.ultimo_login,
                         u.sucursal_permitida,
+                        u.modulos_permitidos,
                         r.nombre AS rol,
                         s.id AS sesion_id,
                         s.expira_en
@@ -135,6 +148,7 @@ class AuthRepository:
                         u.ultimo_login,
                         u.creado_en,
                         u.sucursal_permitida,
+                        u.modulos_permitidos,
                         r.nombre AS rol
                     FROM usuarios u
                     JOIN roles r ON r.id = u.rol_id
@@ -151,6 +165,7 @@ class AuthRepository:
         role_name: str,
         activo: bool,
         sucursal_permitida: str | None,
+        modulos_permitidos: list[str] | None,
     ) -> dict[str, Any]:
         try:
             with self._connect() as conn:
@@ -161,11 +176,19 @@ class AuthRepository:
                         raise ValueError("Rol invalido.")
                     cur.execute(
                         """
-                        INSERT INTO usuarios (username, nombre, password_hash, rol_id, activo, sucursal_permitida)
-                        VALUES (%s, %s, %s, %s, %s, %s)
+                        INSERT INTO usuarios (username, nombre, password_hash, rol_id, activo, sucursal_permitida, modulos_permitidos)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s)
                         RETURNING id
                         """,
-                        (username, nombre, password_hash, role_row["id"], activo, sucursal_permitida),
+                        (
+                            username,
+                            nombre,
+                            password_hash,
+                            role_row["id"],
+                            activo,
+                            sucursal_permitida,
+                            psycopg2.extras.Json(modulos_permitidos) if modulos_permitidos is not None else None,
+                        ),
                     )
                     user_id = cur.fetchone()["id"]
                 conn.commit()
@@ -173,7 +196,15 @@ class AuthRepository:
             raise ValueError("El username ya existe.") from exc
         return self.get_user_by_id(user_id)
 
-    def update_user(self, user_id: int, nombre: str, role_name: str, activo: bool, sucursal_permitida: str | None) -> dict[str, Any]:
+    def update_user(
+        self,
+        user_id: int,
+        nombre: str,
+        role_name: str,
+        activo: bool,
+        sucursal_permitida: str | None,
+        modulos_permitidos: list[str] | None,
+    ) -> dict[str, Any]:
         with self._connect() as conn:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
                 cur.execute("SELECT id FROM roles WHERE nombre = %s", (role_name,))
@@ -187,10 +218,18 @@ class AuthRepository:
                         rol_id = %s,
                         activo = %s,
                         sucursal_permitida = %s,
+                        modulos_permitidos = %s,
                         actualizado_en = NOW()
                     WHERE id = %s
                     """,
-                    (nombre, role_row["id"], activo, sucursal_permitida, user_id),
+                    (
+                        nombre,
+                        role_row["id"],
+                        activo,
+                        sucursal_permitida,
+                        psycopg2.extras.Json(modulos_permitidos) if modulos_permitidos is not None else None,
+                        user_id,
+                    ),
                 )
                 if cur.rowcount <= 0:
                     raise ValueError("Usuario no encontrado.")
@@ -226,6 +265,7 @@ class AuthRepository:
                         u.ultimo_login,
                         u.creado_en,
                         u.sucursal_permitida,
+                        u.modulos_permitidos,
                         r.nombre AS rol
                     FROM usuarios u
                     JOIN roles r ON r.id = u.rol_id

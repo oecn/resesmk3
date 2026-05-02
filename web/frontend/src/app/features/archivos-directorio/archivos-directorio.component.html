@@ -1,0 +1,143 @@
+<section class="archivos-page">
+  <p *ngIf="error()" class="alert">{{ error() }}</p>
+  <p *ngIf="ok()" class="success-alert">{{ ok() }}</p>
+  <p *ngIf="loading()" class="muted">Cargando o guardando propiedades...</p>
+
+  <section class="panel">
+    <div class="panel-title">
+      <div>
+        <h2>Propiedades</h2>
+        <p>Referencia textual de documentos fisicos guardados en buro.</p>
+      </div>
+      <span>{{ data()?.items?.length ?? 0 }} registros</span>
+    </div>
+
+    <form class="form-grid" (ngSubmit)="guardarPropiedad()">
+      <label>
+        Ubicacion principal
+        <select name="propiedadLocal" [(ngModel)]="propiedadForm.local">
+          <option value="luque">Luque</option>
+          <option value="aregua">Aregua</option>
+          <option value="itaugua">Itaugua</option>
+          <option value="limpio">Limpio</option>
+          <option value="otro">Otro</option>
+        </select>
+      </label>
+      <label *ngIf="propiedadForm.local === 'otro'">
+        Otra ubicacion
+        <input type="text" name="propiedadLocalOtro" [(ngModel)]="propiedadForm.local_otro">
+      </label>
+      <label>
+        Otorgado por
+        <input type="text" name="propiedadOtorgadoPor" [(ngModel)]="propiedadForm.otorgado_por" required>
+      </label>
+      <label>
+        A favor de
+        <input type="text" name="propiedadAFavorDe" [(ngModel)]="propiedadForm.a_favor_de" required>
+      </label>
+      <label>
+        Monto
+        <input type="text" name="propiedadMonto" [(ngModel)]="propiedadForm.monto" placeholder="0">
+      </label>
+      <label>
+        Cuenta catastral
+        <input type="text" name="propiedadCuentaCatastral" [(ngModel)]="propiedadForm.cuenta_catastral">
+      </label>
+      <label>
+        Numero de finca
+        <input type="text" name="propiedadNumeroFinca" [(ngModel)]="propiedadForm.numero_finca">
+      </label>
+      <label>
+        Bibliorato
+        <input
+          type="text"
+          name="propiedadBibliorato"
+          [(ngModel)]="propiedadForm.bibliorato"
+          list="biblioratosCargados"
+          placeholder="Nombre del bibliorato">
+        <datalist id="biblioratosCargados">
+          <option *ngFor="let bibliorato of data()?.biblioratos ?? []" [value]="bibliorato"></option>
+        </datalist>
+      </label>
+      <label>
+        Mes y año
+        <input type="month" name="propiedadMesAnho" [(ngModel)]="propiedadForm.mes_anho">
+      </label>
+      <label class="wide-field">
+        Descripcion de ubicacion del inmueble
+        <textarea name="propiedadDescripcionUbicacion" rows="3" [(ngModel)]="propiedadForm.descripcion_ubicacion"></textarea>
+      </label>
+      <label class="wide-field">
+        Observaciones
+        <textarea name="propiedadObservaciones" rows="2" [(ngModel)]="propiedadForm.observaciones"></textarea>
+      </label>
+      <div class="form-actions">
+        <button type="button" class="secondary" *ngIf="propiedadForm.id" (click)="cancelarEdicion()">Cancelar</button>
+        <button type="submit" [disabled]="loading()">{{ propiedadForm.id ? 'Actualizar' : 'Guardar' }} propiedad</button>
+      </div>
+    </form>
+  </section>
+
+  <section class="panel">
+    <div class="filters-row">
+      <label>
+        Buscar
+        <input type="text" name="propiedadSearch" [(ngModel)]="search" (keyup.enter)="cargarPropiedades()">
+      </label>
+      <label>
+        Ubicacion
+        <select name="propiedadFiltroLocal" [(ngModel)]="filtroLocal" (change)="cargarPropiedades()">
+          <option value="">Todas</option>
+          <option value="luque">Luque</option>
+          <option value="aregua">Aregua</option>
+          <option value="itaugua">Itaugua</option>
+          <option value="limpio">Limpio</option>
+          <option value="otro">Otros</option>
+        </select>
+      </label>
+      <button type="button" (click)="cargarPropiedades()" [disabled]="loading()">Filtrar</button>
+    </div>
+
+    <div class="table-wrap">
+      <table class="files-table">
+        <thead>
+          <tr>
+            <th>Ubicacion</th>
+            <th>Otorgado por</th>
+            <th>A favor de</th>
+            <th>Monto</th>
+            <th>Catastro / finca</th>
+            <th>Bibliorato</th>
+            <th>Mes / año</th>
+            <th>Inmueble</th>
+            <th>Accion</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let item of data()?.items ?? []">
+            <td>{{ localLabel(item.local, item.local_otro) }}</td>
+            <td>{{ item.otorgado_por }}</td>
+            <td>{{ item.a_favor_de }}</td>
+            <td>{{ formatMoney(item.monto) }}</td>
+            <td>
+              <span>{{ item.cuenta_catastral || '-' }}</span>
+              <small>Finca: {{ item.numero_finca || '-' }}</small>
+            </td>
+            <td>{{ item.bibliorato || '-' }}</td>
+            <td>{{ formatMonth(item.mes_anho || item.fecha) }}</td>
+            <td class="description-cell">{{ item.descripcion_ubicacion || '-' }}</td>
+            <td>
+              <div class="row-actions">
+                <button type="button" class="secondary" (click)="editarPropiedad(item)">Editar</button>
+                <button type="button" class="danger" (click)="eliminarPropiedad(item)">Eliminar</button>
+              </div>
+            </td>
+          </tr>
+          <tr *ngIf="!loading() && !(data()?.items?.length)">
+            <td colspan="9" class="empty-cell">No hay propiedades registradas.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+</section>

@@ -1,0 +1,303 @@
+.dashboard-page {
+  display: grid;
+  gap: 18px;
+}
+
+.topbar,
+.panel,
+.kpi-menu {
+  background: #fff;
+  border: 1px solid #dbe4ef;
+  border-radius: 8px;
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.08);
+  padding: 20px;
+}
+
+.topbar {
+  align-items: start;
+  display: flex;
+  gap: 18px;
+  justify-content: space-between;
+}
+
+.eyebrow,
+.subtitle,
+.status-row,
+.panel-title span,
+.bar-label span,
+.muted {
+  color: #64748b;
+}
+
+h1,
+h2 {
+  margin: 0;
+}
+
+.filters,
+.status-row,
+.panel-title,
+.table-tools {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.panel-title {
+  border-bottom: 1px solid #e2e8f0;
+  justify-content: space-between;
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+}
+
+label {
+  color: #475569;
+  display: grid;
+  font-weight: 800;
+  gap: 6px;
+}
+
+input,
+select {
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font: inherit;
+  padding: 10px 11px;
+}
+
+button {
+  background: #0f766e;
+  border: 0;
+  border-radius: 8px;
+  color: #fff;
+  font-weight: 800;
+  padding: 10px 14px;
+}
+
+button.secondary {
+  background: #e2e8f0;
+  color: #0f172a;
+}
+
+.insight-grid,
+.kpi-grid,
+.panel-grid,
+.menudencias-grid {
+  display: grid;
+  gap: 14px;
+}
+
+.insight-grid,
+.panel-grid,
+.menudencias-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.menudencias-grid {
+  grid-template-columns: 0.9fr 1.1fr;
+}
+
+.kpi-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.insight-card,
+.kpi-card {
+  border: 1px solid #d9e2ea;
+  border-radius: 8px;
+  box-shadow: 0 10px 30px rgba(33, 46, 58, 0.08);
+}
+
+.insight-card {
+  background: #17343d;
+  color: #fff;
+  padding: 18px;
+}
+
+.insight-card div:first-child {
+  align-items: baseline;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.insight-card span,
+.insight-card p {
+  color: #c9dce2;
+}
+
+.insight-card span {
+  font-size: 0.84rem;
+  font-weight: 800;
+}
+
+.insight-card strong {
+  display: block;
+  font-size: 1.55rem;
+}
+
+.insight-card p {
+  font-size: 0.88rem;
+  margin: 12px 0 0;
+}
+
+.kpi-card {
+  background: #fff;
+  min-width: 0;
+  padding: 18px;
+}
+
+.kpi-card span {
+  color: #627282;
+  display: block;
+  font-size: 0.84rem;
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+
+.kpi-card strong {
+  display: block;
+  font-size: 1.55rem;
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+}
+
+.kpi-menu-wrap {
+  position: relative;
+}
+
+.kpi-menu {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+  max-width: 360px;
+}
+
+.bars {
+  display: grid;
+  gap: 13px;
+}
+
+.bar-row {
+  display: grid;
+  gap: 6px;
+}
+
+.bar-label {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.bar-track {
+  background: #e2e8f0;
+  border-radius: 999px;
+  height: 10px;
+  overflow: hidden;
+}
+
+.bar-fill {
+  background: #0f766e;
+  height: 100%;
+}
+
+.bar-fill.product {
+  background: #be123c;
+}
+
+.table-wrap {
+  overflow: auto;
+}
+
+table {
+  border-collapse: collapse;
+  min-width: 720px;
+  width: 100%;
+}
+
+th,
+td {
+  border-bottom: 1px solid #e2e8f0;
+  padding: 10px;
+  text-align: left;
+}
+
+th {
+  color: #64748b;
+  font-size: 0.82rem;
+  text-transform: uppercase;
+}
+
+.full {
+  grid-column: 1 / -1;
+}
+
+.alert,
+.muted {
+  border-radius: 8px;
+  font-weight: 800;
+  margin: 0;
+  padding: 12px 14px;
+}
+
+.alert {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.muted {
+  background: #f1f5f9;
+}
+
+@media (max-width: 1180px) {
+  .topbar {
+    display: grid;
+  }
+
+  .insight-grid,
+  .panel-grid,
+  .menudencias-grid,
+  .kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.dark-mode .topbar,
+.dark-mode .panel,
+.dark-mode .kpi-card,
+.dark-mode .kpi-menu {
+  background: #152a32;
+  border-color: #28424c;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.22);
+  color: #e5edf2;
+}
+
+.dark-mode .kpi-card span,
+.dark-mode .subtitle,
+.dark-mode .status-row,
+.dark-mode .panel-title span,
+.dark-mode .bar-label span,
+.dark-mode .muted {
+  color: #9fb4bf;
+}
+
+.dark-mode input,
+.dark-mode select {
+  background: #0f2027;
+  border-color: #28424c;
+  color: #e5edf2;
+}
+
+@media (max-width: 760px) {
+  .topbar {
+    padding: 18px;
+  }
+
+  .insight-grid,
+  .panel-grid,
+  .menudencias-grid,
+  .kpi-grid {
+    grid-template-columns: 1fr;
+  }
+}

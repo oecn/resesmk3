@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
 import { ApiService } from '../../core/http/api.service';
-import { DashboardData } from '../../shared/models/dashboard.models';
+import { DashboardData } from './dashboard.models';
 
 @Injectable({ providedIn: 'root' })
 export class DashboardFeatureService {

@@ -1,8 +1,8 @@
 # PRD — Backend del Sistema de Gestión de Hacienda (Reces MK13)
 
-**Versión:** 1.0  
-**Fecha:** 2026-04-23  
-**Estado:** Borrador  
+**Versión:** 2.0  
+**Fecha:** 2026-05-01  
+**Estado:** Activo  
 **Responsable técnico:** Equipo Reces MK13
 
 ---
@@ -11,7 +11,7 @@
 
 ### 1.1 Propósito del sistema
 
-El backend de Reces MK13 es la API central que soporta la operación diaria de un negocio de compra, faena y distribución de hacienda. Gestiona el flujo completo: desde la compra de lotes hasta la recepción física en sucursales, pasando por faena, distribución y análisis financiero. Adicionalmente administra la flota de vehículos asociada a la operación logística.
+El backend de Reces MK13 es la API central que soporta la operación diaria de un negocio de compra, faena y distribución de hacienda. Gestiona el flujo completo: desde la compra de lotes hasta la recepción física en sucursales, pasando por faena, distribución y análisis financiero. Adicionalmente administra la flota de vehículos, acuerdos comerciales con proveedores y un directorio de archivos/propiedades.
 
 ### 1.2 Problema que resuelve
 
@@ -21,8 +21,9 @@ Antes del sistema, el control operativo se realizaba en planillas Excel desconec
 - Sin costo/kg calculado automáticamente por lote.
 - Control de flota y combustible no centralizado.
 - Sin historial de recepción ni generación de PDFs operativos.
+- Acuerdos comerciales con proveedores gestionados en papel sin trazabilidad de renovaciones.
 
-### 1.3 Alcance actual (v1)
+### 1.3 Alcance actual (v2)
 
 | Módulo | Estado |
 |---|---|
@@ -36,6 +37,9 @@ Antes del sistema, el control operativo se realizaba en planillas Excel desconec
 | Flota (vehículos, combustible, gastos) | Implementado |
 | Exportación PDF | Implementado |
 | Importación Excel (combustible) | Implementado |
+| Acuerdos comerciales con proveedores | Implementado |
+| Archivos / directorio de propiedades | Implementado |
+| Sistema de routing por módulos | Implementado |
 
 ---
 
@@ -73,24 +77,107 @@ Antes del sistema, el control operativo se realizaba en planillas Excel desconec
 web/
 ├── run.py                          # Entry point
 └── backend/
-    ├── config.py                   # Configuración global
-    ├── dashboard_api.py            # Handler HTTP + Repository (monolítico, ~3600 líneas)
+    ├── config.py                   # Configuración global (DATABASE_URL, EMPRESAS, LOCALES)
+    ├── dashboard_api.py            # Handler HTTP + Repository (monolítico, ~4675 líneas)
+    ├── routing.py                  # Abstracción de routing: Router, Route, RequestContext
     ├── requirements.txt            # Dependencias pip
     ├── auth/
     │   ├── services/auth_service.py
     │   ├── repositories/auth_repository.py
     │   └── security/passwords.py
-    └── migrations/
-        ├── 001_auth_schema.sql
-        ├── 001_auth_schema.py
-        ├── 002_usuario_sucursal.py
-        ├── 003_flota_base.sql
-        ├── 003_flota_base.py
-        ├── 004_gastos_flota_proveedor_manual.py
-        ├── 005_flota_vehiculos_incompletos.py
-        ├── 006_flota_tipo_combustible.py
-        └── 007_lote_cerrado.py
+    ├── migrations/
+    │   ├── 001_auth_schema.sql
+    │   ├── 001_auth_schema.py
+    │   ├── 002_usuario_sucursal.py
+    │   ├── 003_flota_base.sql
+    │   ├── 003_flota_base.py
+    │   ├── 004_gastos_flota_proveedor_manual.py
+    │   ├── 005_flota_vehiculos_incompletos.py
+    │   ├── 006_flota_tipo_combustible.py
+    │   ├── 007_lote_cerrado.py
+    │   ├── 007_flota_facturas_unicas.py   # prefijo duplicado — ver sección 7
+    │   ├── 008_sesiones_expiradas_cleanup.py
+    │   ├── 009_menudencias_unificadas.py
+    │   ├── 010_gastos_flota_soft_delete.py
+    │   ├── 011_facturas_por_proveedor.py
+    │   ├── 012_acuerdos_comerciales.py
+    │   ├── 013_acuerdos_duracion_meses.py
+    │   ├── 014_acuerdos_historial.py
+    │   ├── 015_acuerdos_renovacion.py
+    │   ├── 016_usuario_modulos_permitidos.py
+    │   └── 017_archivos_propiedades.py
+    └── modules/
+        ├── __init__.py             # discover_routes() — autodescubrimiento de módulos
+        └── README.md               # Contrato de registro de rutas
 ```
+
+### 2.4 Sistema de routing por módulos
+
+A partir de v2, los endpoints nuevos no editan `do_GET`/`do_POST`/... en `dashboard_api.py`. En cambio, se declaran en paquetes dentro de `modules/` que son autodescubiertos al arrancar el servidor.
+
+#### `routing.py`
+
+Define tres primitivas:
+
+```python
+@dataclass(frozen=True)
+class RequestContext:
+    handler: Any          # instancia de DashboardHandler
+    parsed: Any           # resultado de urlparse(self.path)
+    query: dict[str, list[str]]
+    payload: dict[str, Any] | None = None   # None en GET/DELETE
+
+@dataclass(frozen=True)
+class Route:
+    method: str
+    path: str
+    handler: RouteHandler
+    name: str = ""
+    def matches(self, method: str, path: str) -> bool: ...
+
+class Router:
+    def get/post/put/delete(self, path, handler, name=""): ...
+    def match(self, method, path) -> Route | None: ...
+    @property
+    def routes(self) -> tuple[Route, ...]: ...
+```
+
+#### `modules/__init__.py` — `discover_routes()`
+
+Al iniciar el servidor, `DashboardHandler.module_routes = discover_routes()` recorre todos los subpaquetes de `modules/` con `pkgutil.iter_modules`, importa su `routes.py` si existe, llama a `register_routes(router)` y acumula las rutas en una tupla inmutable.
+
+Manejo de errores: si el propio `routes.py` de un módulo no existe (`ModuleNotFoundError` donde `exc.name == routes_module_name`), ese módulo se omite silenciosamente. Los errores de import transitivos (dependencias rotas) se re-lanzan.
+
+#### Integración en `DashboardHandler`
+
+- `do_GET`: `if self._dispatch_module_route("GET", parsed, query): return` — las rutas de módulo tienen prioridad sobre los if/elif del legacy handler.
+- `do_POST`, `do_PUT`, `do_DELETE`: similar; el body se lee antes de despachar si existe al menos una ruta de módulo que coincida con el path.
+- `_dispatch_module_route` retorna `True` cuando encontró y ejecutó la ruta (tanto en éxito como en excepción), para evitar que el legacy handler procese la misma request.
+
+#### Contrato de un módulo nuevo
+
+```
+modules/nombre_modulo/
+  __init__.py
+  repository.py  # consultas SQL
+  service.py     # reglas de negocio
+  routes.py      # register_routes(router)
+  schemas.py     # contratos de payload
+```
+
+Ejemplo mínimo de `routes.py`:
+
+```python
+def register_routes(router):
+    router.get("/api/nombre-modulo/items", list_items)
+    router.post("/api/nombre-modulo/items", save_item)
+
+def list_items(ctx):
+    ctx.handler._require_roles({"admin", "supervisor"})
+    return {"items": []}
+```
+
+Si el handler retorna un valor distinto de `None`, el dispatcher lo envía como JSON con status 200. Para otro status o para PDF, el handler llama a `ctx.handler._send_json(...)` / `ctx.handler._send_pdf(...)` y retorna `None`.
 
 ---
 
@@ -116,6 +203,7 @@ web/
 | rol_id | FK → roles | |
 | activo | BOOLEAN | Soft-delete lógico |
 | sucursal_permitida | VARCHAR NULL | luque / aregua / itaugua (solo rol recepcion) |
+| modulos_permitidos | JSONB NULL | Lista de módulos habilitados para el usuario |
 | ultimo_login | TIMESTAMP | |
 | creado_en | TIMESTAMP | |
 | actualizado_en | TIMESTAMP | |
@@ -250,6 +338,78 @@ web/
 | detalle | TEXT | |
 | cargado_por | VARCHAR | username |
 
+### 3.4 Dominio: Acuerdos Comerciales
+
+#### `acuerdos_proveedores`
+| Columna | Tipo | Descripción |
+|---|---|---|
+| id | SERIAL PK | |
+| nombre | VARCHAR | Nombre del proveedor |
+| ruc | VARCHAR NULL | |
+| telefono | VARCHAR NULL | |
+| activo | BOOLEAN DEFAULT TRUE | |
+| creado_en | TIMESTAMP | |
+| actualizado_en | TIMESTAMP | |
+
+#### `acuerdos_comerciales`
+| Columna | Tipo | Descripción |
+|---|---|---|
+| id | SERIAL PK | |
+| proveedor_id | FK → acuerdos_proveedores | |
+| tipo_acuerdo | VARCHAR | Tipo de acuerdo comercial |
+| descripcion | TEXT NULL | |
+| fecha_inicio | DATE | |
+| fecha_fin | DATE NULL | |
+| duracion_meses | INTEGER NULL | Duración pactada en meses |
+| monto | NUMERIC NULL | Valor del acuerdo (Gs.) |
+| estado | VARCHAR | activo / vencido / cancelado |
+| estado_renovacion | VARCHAR NULL | pendiente / renovado / no-renovar |
+| acuerdo_origen_id | FK NULL → acuerdos_comerciales | Acuerdo que origina esta renovación |
+| renovado_por_acuerdo_id | FK NULL → acuerdos_comerciales | Acuerdo que lo renovó |
+| cambiado_por | VARCHAR NULL | Username que creó/modificó el registro |
+| creado_en | TIMESTAMP | |
+| actualizado_en | TIMESTAMP | |
+
+#### `acuerdos_ubicaciones`
+| Columna | Tipo | Descripción |
+|---|---|---|
+| id | SERIAL PK | |
+| acuerdo_id | FK → acuerdos_comerciales | |
+| local | VARCHAR | Sucursal asociada |
+
+#### `acuerdos_historial`
+| Columna | Tipo | Descripción |
+|---|---|---|
+| id | SERIAL PK | |
+| acuerdo_id | FK → acuerdos_comerciales | |
+| campo | VARCHAR | Campo que cambió |
+| valor_anterior | TEXT NULL | |
+| valor_nuevo | TEXT NULL | |
+| cambiado_por | VARCHAR | Username |
+| cambiado_en | TIMESTAMP | |
+
+### 3.5 Dominio: Archivos / Propiedades
+
+#### `archivos_propiedades`
+| Columna | Tipo | Descripción |
+|---|---|---|
+| id | SERIAL PK | |
+| local | TEXT | luque / aregua / itaugua / limpio / otro |
+| local_otro | TEXT NULL | Nombre libre si `local = 'otro'` |
+| otorgado_por | TEXT | Parte otorgante |
+| a_favor_de | TEXT | Parte beneficiaria |
+| monto | NUMERIC(18,2) NULL | Valor (Gs.) |
+| cuenta_catastral | TEXT NULL | |
+| numero_finca | TEXT NULL | |
+| bibliorato | TEXT NULL | Archivador físico |
+| mes_anho | TEXT NULL | Período de referencia |
+| fecha | DATE NULL | |
+| descripcion_ubicacion | TEXT NULL | |
+| observaciones | TEXT NULL | |
+| activo | BOOLEAN DEFAULT TRUE | |
+| creado_en | TIMESTAMP | |
+| actualizado_en | TIMESTAMP | |
+
 ---
 
 ## 4. API — Especificación de Endpoints
@@ -271,7 +431,7 @@ web/
 
 **Respuesta 200:**
 ```json
-{ "status": "ok", "timestamp": "2026-04-23T10:00:00" }
+{ "status": "ok", "timestamp": "2026-05-01T10:00:00" }
 ```
 
 ---
@@ -442,78 +602,20 @@ Lista lotes con su faena asociada.
 | empresa | STRING | Filtro empresa |
 | lote | STRING | Búsqueda por número de lote |
 
-**Respuesta 200:**
-```json
-{
-  "lotes": [
-    {
-      "id": 10,
-      "lote": "L-2026-010",
-      "empresa": "Corral",
-      "fecha": "2026-04-20",
-      "cantidad": 50,
-      "monto": 15000000,
-      "peso_compra_kg": 12500.0,
-      "cerrado": false,
-      "faenas": [
-        { "id": 3, "cantidad": 48, "fecha": "2026-04-21", "nota": "" }
-      ],
-      "total_faenado": 48
-    }
-  ]
-}
-```
-
 ---
 
 #### POST `/api/compras-faena/lotes`
 Crea o edita un lote de compra. **Rol requerido:** `admin`, `supervisor`.
-
-**Body (crear):**
-```json
-{
-  "lote": "L-2026-011",
-  "empresa": "Rodeo",
-  "fecha": "2026-04-23",
-  "cantidad": 60,
-  "monto": 18000000,
-  "peso_compra_kg": 15000.0
-}
-```
-
-**Body (editar — incluir `id`):**
-```json
-{ "id": 10, "monto": 15500000, ... }
-```
-**Respuesta 200/201:** `{ "id": 11, "ok": true }`
 
 ---
 
 #### POST `/api/compras-faena/faenas`
 Agrega un registro de faena a un lote. **Rol requerido:** `admin`, `supervisor`.
 
-**Body:**
-```json
-{
-  "lote_id": 10,
-  "cantidad": 5,
-  "fecha": "2026-04-22",
-  "nota": "Faena parcial"
-}
-```
-**Respuesta 201:** `{ "id": 8, "ok": true }`  
-**Error:** `400` si cabezas faenadas superan lo distribuido.
-
 ---
 
 #### POST `/api/compras-faena/faena-total`
 Ajusta directamente el total faenado del lote (override). **Rol requerido:** `admin`.
-
-**Body:**
-```json
-{ "lote_id": 10, "total_faenado": 50 }
-```
-**Respuesta 200:** `{ "ok": true }`
 
 ---
 
@@ -522,62 +624,16 @@ Ajusta directamente el total faenado del lote (override). **Rol requerido:** `ad
 #### GET `/api/distribuciones`
 Lista lotes disponibles para distribuir con sus distribuciones actuales.
 
-**Query params:**
-| Parámetro | Tipo | Descripción |
-|---|---|---|
-| lote_id | INTEGER | Filtrar por lote específico |
-| desde | DATE | |
-| hasta | DATE | |
-
-**Respuesta 200:**
-```json
-{
-  "lotes": [
-    {
-      "id": 10,
-      "lote": "L-2026-010",
-      "empresa": "Corral",
-      "faenado": 48,
-      "distribuido_kg": 11800.0,
-      "distribuido_cabezas": 45,
-      "saldo_cabezas": 3,
-      "distribuciones": [
-        {
-          "id": 7, "local": "LUQUE", "fecha": "2026-04-21",
-          "kg": 5000.0, "cabezas": 20, "nota": ""
-        }
-      ]
-    }
-  ]
-}
-```
-
 ---
 
 #### POST `/api/distribuciones`
 Crea una nueva distribución. **Rol requerido:** `admin`, `supervisor`.
 
-**Body:**
-```json
-{
-  "lote_id": 10,
-  "local": "AREGUA",
-  "fecha": "2026-04-22",
-  "kg": 3200.0,
-  "cabezas": 15,
-  "nota": ""
-}
-```
-**Respuesta 201:** `{ "id": 9, "ok": true }`  
-**Error:** `400` si cabezas distribuidas superan faenado.
-
 ---
 
 #### DELETE `/api/distribuciones`
-Elimina una distribución. **Rol requerido:** `admin`, `supervisor`.
-
+Elimina una distribución. **Rol requerido:** `admin`, `supervisor`.  
 **Query params:** `?id=9`  
-**Respuesta 200:** `{ "ok": true }`  
 **Error:** `403` si distribución ya fue recepcionada.
 
 ---
@@ -588,350 +644,75 @@ Elimina una distribución. **Rol requerido:** `admin`, `supervisor`.
 
 **Control de acceso:** rol `admin` y `supervisor` acceden a todas; rol `recepcion` solo a su `sucursal_permitida`.
 
----
-
-#### GET `/api/recepcion/{slug}`
-Devuelve distribuciones esperadas y estado de recepción.
-
-**Query params:**
-| Parámetro | Tipo | Descripción |
+| Método | Ruta | Descripción |
 |---|---|---|
-| fecha | DATE | Fecha de recepción (default: hoy) |
-
-**Respuesta 200:**
-```json
-{
-  "slug": "luque",
-  "fecha": "2026-04-23",
-  "distribuciones": [
-    {
-      "id": 7,
-      "lote": "L-2026-010",
-      "empresa": "Corral",
-      "kg_enviado": 5000.0,
-      "cabezas_enviadas": 20,
-      "kg_recibido": 4980.0,
-      "diferencia_kg": -20.0,
-      "nota_recepcion": "Faltó un paquete"
-    }
-  ],
-  "menudencias": [
-    { "id": 3, "producto": "Higado", "kg": 60.5, "unidades": 12 }
-  ],
-  "resumen": {
-    "total_enviado_kg": 5000.0,
-    "total_recibido_kg": 4980.0,
-    "diferencia_total_kg": -20.0
-  }
-}
-```
-
----
-
-#### POST `/api/recepcion/{slug}/distribuciones`
-Registra o actualiza la recepción física de una distribución.
-
-**Body:**
-```json
-{
-  "distribucion_id": 7,
-  "kg_recibido": 4980.0,
-  "nota_recepcion": "Faltó un paquete"
-}
-```
-**Respuesta 200:** `{ "ok": true }`
-
----
-
-#### GET `/api/recepcion/{slug}/pdf`
-Genera y descarga PDF de recepción del día.
-
-**Query params:** `?fecha=2026-04-23`  
-**Respuesta 200:** `Content-Type: application/pdf`
-
----
-
-#### POST `/api/recepcion/{slug}/menudencias`
-Agrega un registro de menudencia.
-
-**Body:**
-```json
-{ "fecha": "2026-04-23", "producto": "Higado", "kg": 60.5, "unidades": 12 }
-```
-**Respuesta 201:** `{ "id": 4, "ok": true }`
-
----
-
-#### PUT `/api/recepcion/{slug}/menudencias`
-Edita una menudencia existente.
-
-**Body:**
-```json
-{ "id": 4, "kg": 65.0, "unidades": 13 }
-```
-**Respuesta 200:** `{ "ok": true }`
-
----
-
-#### DELETE `/api/recepcion/{slug}/menudencias/{id}`
-Elimina una menudencia. **Rol requerido:** `admin`, `supervisor`.
-
-**Respuesta 200:** `{ "ok": true }`
+| GET | `/api/recepcion/{slug}` | Distribuciones esperadas y estado de recepción |
+| POST | `/api/recepcion/{slug}/distribuciones` | Registra/actualiza recepción de una distribución |
+| GET | `/api/recepcion/{slug}/pdf` | PDF de recepción del día |
+| POST | `/api/recepcion/{slug}/menudencias` | Agrega menudencia |
+| PUT | `/api/recepcion/{slug}/menudencias` | Edita menudencia |
+| DELETE | `/api/recepcion/{slug}/menudencias/{id}` | Elimina menudencia (admin/supervisor) |
 
 ---
 
 ### 4.8 Resúmenes Analíticos (`/api/resumenes`)
 
-#### GET `/api/resumenes`
-Listado analítico de lotes con métricas consolidadas.
-
-**Query params:**
-| Parámetro | Tipo | Descripción |
+| Método | Ruta | Descripción |
 |---|---|---|
-| desde | DATE | |
-| hasta | DATE | |
-| empresa | STRING | |
-| q | STRING | Búsqueda libre por lote |
-| cerrado | BOOLEAN | true = solo cerrados, false = solo abiertos |
-
-**Respuesta 200:**
-```json
-{
-  "resumenes": [
-    {
-      "id": 10,
-      "lote": "L-2026-010",
-      "empresa": "Corral",
-      "fecha": "2026-04-20",
-      "cantidad": 50,
-      "monto": 15000000,
-      "peso_compra_kg": 12500.0,
-      "total_faenado": 48,
-      "kg_distribuidos": 11800.0,
-      "cabezas_distribuidas": 45,
-      "costo_kg": 1271.19,
-      "rendimiento_pct": 94.4,
-      "pct_distribuido": 93.75,
-      "cerrado": false
-    }
-  ],
-  "totales": {
-    "lotes": 1,
-    "cabezas": 50,
-    "monto": 15000000,
-    "kg_distribuidos": 11800.0
-  }
-}
-```
+| GET | `/api/resumenes` | Listado analítico con métricas por lote |
+| GET | `/api/resumenes/pdf` | PDF de lotes seleccionados (`?lote_ids=10,11`) |
+| POST | `/api/resumenes/cerrar` | Marca lotes como cerrados (admin/supervisor) |
 
 ---
 
-#### GET `/api/resumenes/pdf`
-Genera PDF de resúmenes para los lotes seleccionados.
+### 4.9 Flota
 
-**Query params:** `?lote_ids=10,11,12`  
-**Respuesta 200:** `Content-Type: application/pdf`
-
----
-
-#### POST `/api/resumenes/cerrar`
-Marca lotes como cerrados. **Rol requerido:** `admin`, `supervisor`.
-
-**Body:**
-```json
-{ "lote_ids": [10, 11] }
-```
-**Respuesta 200:** `{ "ok": true, "cerrados": 2 }`
-
----
-
-### 4.9 Flota — Catálogos
-
-#### GET `/api/flota/catalogos`
-Devuelve catálogos necesarios para el módulo de flota.
-
-**Respuesta 200:**
-```json
-{
-  "vehiculos": [
-    {
-      "id": 1, "codigo": "CAM-01", "nombre": "Camión Luque",
-      "chapa": "ABC 123", "marca": "Mercedes", "tipo": "camion",
-      "sucursal": "luque", "chofer": "Juan Pérez", "activo": true
-    }
-  ],
-  "proveedores": [
-    { "id": 1, "nombre": "YPF Luque", "tipo": "combustible", "activo": true }
-  ],
-  "tipos_gasto": [
-    { "id": 1, "nombre": "Mantenimiento", "activo": true }
-  ]
-}
-```
-
----
-
-### 4.10 Flota — Vehículos
-
-#### GET `/api/flota/vehiculos`
-Lista vehículos con filtros opcionales.
-
-**Query params:** `?activo=true&sucursal=luque`
-
----
-
-#### POST `/api/flota/vehiculos`
-Crea o edita un vehículo. **Rol requerido:** `admin`.
-
-**Body:**
-```json
-{
-  "codigo": "CAM-02", "nombre": "Camión Aregua",
-  "chapa": "XYZ 456", "marca": "Iveco",
-  "modelo": "Tector", "anho": 2020,
-  "tipo": "camion", "sucursal": "aregua",
-  "chofer": "Pedro García", "activo": true
-}
-```
-
----
-
-#### PUT `/api/flota/vehiculos/{id}`
-Actualiza vehículo. **Rol requerido:** `admin`.
-
----
-
-#### POST `/api/flota/proveedores`
-Crea proveedor. **Rol requerido:** `admin`.
-
----
-
-#### PUT `/api/flota/proveedores/{id}`
-Actualiza proveedor. **Rol requerido:** `admin`.
-
----
-
-### 4.11 Flota — Combustible
-
-#### GET `/api/flota/combustible`
-Lista cargas de combustible con filtros.
-
-**Query params:**
-| Parámetro | Tipo | Descripción |
+| Método | Ruta | Descripción |
 |---|---|---|
-| desde | DATE | |
-| hasta | DATE | |
-| vehiculo_id | INTEGER | |
-| sucursal | STRING | |
-
-**Respuesta 200:**
-```json
-{
-  "cargas": [
-    {
-      "id": 15, "vehiculo_id": 1, "vehiculo_nombre": "Camión Luque",
-      "fecha": "2026-04-22", "proveedor_nombre": "YPF Luque",
-      "litros": 200.0, "importe": 600000, "precio_litro": 3000.0,
-      "tipo_combustible": "gasoil", "km_actual": 85000,
-      "nro_factura": "001-001-0001234", "cargado_por": "admin"
-    }
-  ],
-  "totales": { "litros": 200.0, "importe": 600000 }
-}
-```
+| GET | `/api/flota/catalogos` | Vehículos, proveedores, tipos de gasto |
+| GET | `/api/flota/vehiculos` | Lista vehículos |
+| POST | `/api/flota/vehiculos` | Crea/edita vehículo (admin) |
+| PUT | `/api/flota/vehiculos/{id}` | Actualiza vehículo (admin) |
+| POST | `/api/flota/proveedores` | Crea proveedor (admin) |
+| PUT | `/api/flota/proveedores/{id}` | Actualiza proveedor (admin) |
+| GET | `/api/flota/combustible` | Lista cargas de combustible |
+| POST | `/api/flota/combustible` | Registra carga |
+| POST | `/api/flota/combustible/eliminar` | Soft delete de carga (admin) |
+| POST | `/api/flota/combustible/import/preview` | Preview importación Excel |
+| POST | `/api/flota/combustible/import` | Confirma importación Excel |
+| GET | `/api/flota/gastos` | Lista gastos |
+| POST | `/api/flota/gastos` | Registra gasto |
+| GET | `/api/flota/resumen-semanal` | Resumen combustible/gastos por semana |
+| GET | `/api/flota/resumen-mensual/pdf` | PDF resumen mensual de flota |
 
 ---
 
-#### POST `/api/flota/combustible`
-Registra nueva carga de combustible.
+### 4.10 Acuerdos Comerciales (`/api/acuerdos-comerciales`)
 
-**Body:**
-```json
-{
-  "vehiculo_id": 1, "fecha": "2026-04-23",
-  "proveedor_id": 1, "litros": 150.0,
-  "importe": 450000, "tipo_combustible": "gasoil",
-  "km_actual": 85200, "nro_factura": "001-001-0001235"
-}
-```
-**Respuesta 201:** `{ "id": 16, "ok": true }`
+| Método | Ruta | Auth | Descripción |
+|---|---|---|---|
+| GET | `/api/acuerdos-comerciales` | admin, supervisor | Lista acuerdos con proveedor, ubicaciones e historial |
+| POST | `/api/acuerdos-comerciales` | admin, supervisor | Crea o edita un acuerdo; registra historial de cambios |
+| GET | `/api/acuerdos-comerciales/proveedores` | admin, supervisor | Lista proveedores de acuerdos |
+| POST | `/api/acuerdos-comerciales/proveedores` | admin | Crea proveedor de acuerdo |
+| GET | `/api/acuerdos-comerciales/historial` | admin, supervisor | Historial de cambios de un acuerdo (`?acuerdo_id=N`) |
+| GET | `/api/acuerdos-comerciales/historial-proveedor` | admin, supervisor | Historial de acuerdos de un proveedor (`?proveedor_id=N`) |
 
----
-
-#### POST `/api/flota/combustible/eliminar`
-Elimina (soft delete) una carga. **Rol requerido:** `admin`.
-
-**Body:**
-```json
-{ "id": 16, "motivo": "Carga duplicada" }
-```
+**Flujo de renovación:**
+1. Acuerdo original tiene `estado_renovacion = 'pendiente'`.
+2. POST crea nuevo acuerdo con `acuerdo_origen_id = <id_original>`.
+3. El original recibe `renovado_por_acuerdo_id = <id_nuevo>` y `estado_renovacion = 'renovado'`.
+4. El historial registra el campo `cambiado_por` con el username del operador.
 
 ---
 
-#### POST `/api/flota/combustible/import/preview`
-Vista previa de importación desde Excel (sin persistir).
+### 4.11 Archivos / Directorio de Propiedades (`/api/archivos-directorio`)
 
-**Body:** `multipart/form-data` con campo `file` (`.xlsx`).
-
-**Respuesta 200:**
-```json
-{
-  "preview": [
-    { "fila": 2, "vehiculo": "Camión Luque", "litros": 200, "importe": 600000, "ok": true }
-  ],
-  "errores": []
-}
-```
-
----
-
-#### POST `/api/flota/combustible/import`
-Confirma importación desde Excel.
-
-**Body:** `multipart/form-data` con campo `file` (`.xlsx`).
-
-**Respuesta 200:** `{ "importados": 12, "errores": [] }`
-
----
-
-### 4.12 Flota — Gastos
-
-#### GET `/api/flota/gastos`
-Lista gastos con filtros.
-
-**Query params:** `?desde=2026-04-01&hasta=2026-04-30&vehiculo_id=1&tipo_gasto_id=2`
-
----
-
-#### POST `/api/flota/gastos`
-Registra nuevo gasto.
-
-**Body:**
-```json
-{
-  "vehiculo_id": 1, "fecha": "2026-04-23",
-  "tipo_gasto_id": 1, "importe": 250000,
-  "km_actual": 85200, "proveedor_id": 2,
-  "factura": "001-001-0000500", "detalle": "Cambio de aceite"
-}
-```
-
----
-
-### 4.13 Flota — Resúmenes
-
-#### GET `/api/flota/resumen-semanal`
-Resumen de combustible y gastos por semana.
-
-**Query params:** `?semana=17&anho=2026&vehiculo_id=1&sucursal=luque`
-
----
-
-#### GET `/api/flota/resumen-mensual/pdf`
-PDF de resumen mensual de flota.
-
-**Query params:** `?mes=4&anho=2026&vehiculo_id=1&sucursal=luque`  
-**Respuesta 200:** `Content-Type: application/pdf`
+| Método | Ruta | Auth | Descripción |
+|---|---|---|---|
+| GET | `/api/archivos-directorio` | Todos | Lista propiedades con filtros opcionales |
+| POST | `/api/archivos-directorio` | admin, supervisor | Crea o edita una propiedad |
+| DELETE | `/api/archivos-directorio` | admin | Soft delete de una propiedad (`?id=N`) |
 
 ---
 
@@ -942,7 +723,7 @@ PDF de resumen mensual de flota.
 - **Mecanismo:** Cookie de sesión `rces_session` (HttpOnly, SameSite=Lax).
 - **Token:** generado con `secrets.token_urlsafe(32)` — 43 caracteres URL-safe, 256 bits de entropía efectiva.
 - **TTL de sesión:** 7 días desde creación.
-- **Revocación:** Logout explicito marca `cerrada_en`. Expiración evaluada en cada request.
+- **Revocación:** Logout explícito marca `cerrada_en`. Expiración evaluada en cada request.
 
 ### 5.2 Contraseñas
 
@@ -964,6 +745,11 @@ PDF de resumen mensual de flota.
 | Flota | ✓ | ✓ | ✓ (su sucursal) |
 | Administración usuarios | ✓ | — | — |
 | Crear/editar catálogos flota | ✓ | — | — |
+| Acuerdos comerciales (ver/editar) | ✓ | ✓ | — |
+| Acuerdos comerciales (crear proveedor) | ✓ | — | — |
+| Archivos / propiedades (ver) | ✓ | ✓ | ✓ |
+| Archivos / propiedades (crear/editar) | ✓ | ✓ | — |
+| Archivos / propiedades (eliminar) | ✓ | — | — |
 
 ### 5.4 SQL Injection
 
@@ -998,7 +784,7 @@ El servidor escucha en `0.0.0.0:8008`. Configurable directamente en `dashboard_a
 
 ## 7. Migraciones de Base de Datos
 
-Las migraciones se ejecutan manualmente en orden. No hay herramienta de migración automática (e.g., Alembic).
+Las migraciones se ejecutan manualmente en orden. No hay herramienta de migración automática.
 
 | Migración | Descripción |
 |---|---|
@@ -1009,8 +795,19 @@ Las migraciones se ejecutan manualmente en orden. No hay herramienta de migraci�
 | `005_flota_vehiculos_incompletos` | Ajustes a campos de vehículos |
 | `006_flota_tipo_combustible` | Columna `tipo_combustible` en cargas |
 | `007_lote_cerrado` | Columna `cerrado` en `lotes` |
+| `007_flota_facturas_unicas` | ⚠ Prefijo duplicado — restricciones de unicidad en facturas de flota |
+| `008_sesiones_expiradas_cleanup` | Limpieza de sesiones expiradas |
+| `009_menudencias_unificadas` | Ajustes a tablas de menudencias por sucursal |
+| `010_gastos_flota_soft_delete` | Soft delete en `cargas_combustible` (columnas `eliminado_*`) |
+| `011_facturas_por_proveedor` | Restricciones de factura por proveedor en flota |
+| `012_acuerdos_comerciales` | Tablas `acuerdos_proveedores`, `acuerdos_comerciales`, `acuerdos_ubicaciones` |
+| `013_acuerdos_duracion_meses` | Columna `duracion_meses` en `acuerdos_comerciales` |
+| `014_acuerdos_historial` | Tabla `acuerdos_historial` para auditoría de cambios |
+| `015_acuerdos_renovacion` | Columnas `estado_renovacion`, `acuerdo_origen_id`, `renovado_por_acuerdo_id` |
+| `016_usuario_modulos_permitidos` | Columna `modulos_permitidos` JSONB en `usuarios` |
+| `017_archivos_propiedades` | Tabla `archivos_propiedades` + índice por local |
 
-**Mecanismo defensivo:** El método `_ensure_schema()` ejecuta al iniciar el servidor y aplica `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` para las columnas más recientes, evitando errores si las migraciones no fueron ejecutadas.
+**Nota sobre prefijo duplicado:** Existen dos archivos con prefijo `007_`. Dado que la base de datos de producción es la misma instancia desde el inicio, ambas migraciones ya fueron aplicadas. Renombrar los archivos no es urgente pero sí conveniente al implementar un runner formal.
 
 ---
 
@@ -1035,7 +832,7 @@ Los PDFs se sirven inline con `Content-Disposition: inline; filename="..."` y so
 - Formato: `.xlsx` con headers normalizados (sin acentos, case-insensitive).
 - Columnas esperadas: vehículo (referencia), fecha, litros, importe, tipo_combustible, km, factura, observación.
 - Flujo: **preview** primero → usuario confirma → **import** persiste.
-- El preview muestra filas con estado `ok: true` o mensaje de error por fila (vehículo no encontrado, fecha inválida, etc.).
+- El preview muestra filas con estado `ok: true` o mensaje de error por fila.
 
 ---
 
@@ -1054,22 +851,26 @@ saldo_cabezas    = total_faenado − cabezas_distribuidas
 
 - **Faena**: `total_faenado ≥ cabezas_distribuidas` (no puede reducir faena por debajo de lo ya distribuido).
 - **Distribución**: `cabezas_distribuidas ≤ total_faenado` (no distribuir más de lo faenado).
-- **Lote cerrado**: Una vez marcado como `cerrado = true`, no se permiten modificaciones (faenas ni distribuciones).
+- **Lote cerrado**: Una vez marcado como `cerrado = true`, no se permiten modificaciones.
 - **Eliminación de distribución**: Solo si la distribución no tiene recepción registrada en sucursal.
 
 ### 10.3 CTE de resúmenes
 
-El endpoint `/api/resumenes` usa una CTE SQL (`_resumen_lotes_cte`) que consolida en una sola query:
-- JOIN a `faenas` → suma de cantidad faenada.
-- JOIN a `distribuciones` → suma de kg y cabezas por local.
-- Cálculos derivados como columnas.
+El endpoint `/api/resumenes` usa una CTE SQL que consolida en una sola query JOINs a `faenas` y `distribuciones`, calculando columnas derivadas (costo_kg, rendimiento_pct, pct_distribuido).
 
 ### 10.4 Formato numérico paraguayo
 
 El parser de números acepta ambos formatos:
 - ES: `1.200.500,75` → `1200500.75`
 - EN: `1,200,500.75` → `1200500.75`
-- Sin separador: `1200500.75` → `1200500.75`
+
+### 10.5 Cadena de renovación de acuerdos
+
+Cuando se crea un acuerdo nuevo como renovación:
+1. Se establece `acuerdo_origen_id` en el nuevo acuerdo.
+2. El acuerdo original recibe `renovado_por_acuerdo_id` y `estado_renovacion = 'renovado'`.
+3. Se registra una entrada en `acuerdos_historial` con el `cambiado_por` del operador.
+4. Los estados posibles de `estado_renovacion`: `pendiente` / `renovado` / `no-renovar`.
 
 ---
 
@@ -1102,18 +903,19 @@ El parser de números acepta ambos formatos:
 
 | Ítem | Descripción | Impacto |
 |---|---|---|
-| `dashboard_api.py` monolítico | ~3600 líneas en un solo archivo | Dificulta mantenimiento, testing y onboarding |
+| `dashboard_api.py` monolítico | ~4675 líneas en un solo archivo; módulos nuevos usan el sistema routing.py pero los dominios legacy siguen en el monolito | Dificulta mantenimiento, testing y onboarding |
 | Sin pool de conexiones | Nueva conexión por request | Overhead de latencia en carga concurrente |
-| Sesiones sin limpieza | Tabla `sesiones` crece indefinidamente | Degradación de performance en consultas de sesión |
-| Sin logging estructurado | `print()` dispersos | Imposible auditar en producción |
+| Sesiones sin limpieza activa | Migración 008 agrega limpieza pero no hay job periódico ejecutándose | Degradación de performance en consultas de sesión |
+| Sin logging estructurado | `print()` dispersos; `_dispatch_module_route` no loguea errores 500 de módulos | Imposible auditar en producción |
 
 ### 13.2 Media prioridad
 
 | Ítem | Descripción |
 |---|---|
-| Sin framework de migraciones | Alembic o Flyway permitiría versionado formal |
+| Sin framework de migraciones | No hay runner; migraciones se ejecutan manualmente; prefijo `007_` duplicado |
 | Sin tests automatizados | Cualquier refactor requiere validación manual completa |
 | URL backend hardcodeada en frontend | `192.168.10.12:8008` en `environment.ts` |
+| Módulos legacy no migrados al sistema routing | `compras_faena`, `distribuciones`, `recepcion`, `resumenes`, `flota` siguen en `dashboard_api.py` |
 
 ### 13.3 Baja prioridad
 
@@ -1121,27 +923,33 @@ El parser de números acepta ambos formatos:
 |---|---|
 | Sin framework HTTP | Migrar a FastAPI o Flask simplificaría routing y validación |
 | Tablas menudencias por sucursal | 3 tablas idénticas → una tabla con columna `sucursal` |
-| Sin paginación | Endpoints que retornan listas no paginated |
+| Sin paginación | Endpoints que retornan listas no paginadas |
+| `Route.matches()` sin parámetros de URL | Solo comparación exacta de path; URLs dinámicas como `/api/recepcion/{slug}` siguen en el legacy |
 
 ---
 
 ## 14. Roadmap Propuesto
 
-### Fase 1 — Estabilización (próximas 4 semanas)
+### Fase 1 — Estabilización
 
-- [ ] Implementar limpieza periódica de sesiones expiradas (job o trigger SQL).
+- [x] Implementar sistema de routing por módulos (`routing.py` + `discover_routes()`).
+- [x] Módulo acuerdos comerciales con auditoría completa.
+- [x] Módulo archivos/directorio de propiedades.
+- [ ] Implementar job periódico de limpieza de sesiones expiradas.
 - [ ] Agregar logging estructurado (JSON) con nivel configurable.
+- [ ] Loguear errores 500 en `_dispatch_module_route`.
 - [ ] Parametrizar puerto del servidor vía env var.
 - [ ] Documentar procedimiento de backup de la base de datos.
+- [ ] Implementar runner de migraciones y corregir prefijo `007_` duplicado.
 
-### Fase 2 — Modularización (2–3 meses)
+### Fase 2 — Modularización
 
-- [ ] Separar `dashboard_api.py` en módulos por dominio: `auth`, `compras_faena`, `distribuciones`, `recepcion`, `resumenes`, `flota`.
-- [ ] Introducir pool de conexiones (e.g., `psycopg2.pool.ThreadedConnectionPool`).
+- [ ] Migrar dominios legacy (`compras_faena`, `distribuciones`, `recepcion`, `resumenes`, `flota`) al sistema de módulos.
+- [ ] Introducir pool de conexiones (`psycopg2.pool.ThreadedConnectionPool`).
 - [ ] Agregar tests de integración para flujos críticos (compra → faena → distribución → recepción).
 - [ ] Implementar paginación en endpoints de listado.
 
-### Fase 3 — Modernización (3–6 meses)
+### Fase 3 — Modernización
 
 - [ ] Migrar servidor HTTP a FastAPI (mantiene Python, agrega OpenAPI automático y validación con Pydantic).
 - [ ] Adoptar Alembic para gestión formal de migraciones.
@@ -1164,3 +972,7 @@ El parser de números acepta ambos formatos:
 | Slug | Identificador en URL de la sucursal: `luque`, `aregua`, `itaugua` |
 | Flota | Conjunto de vehículos utilizados para la logística de distribución |
 | Carga combustible | Registro de reabastecimiento de combustible de un vehículo |
+| Acuerdo comercial | Contrato con proveedor con fechas, montos y estado de renovación |
+| Historial | Registro de auditoría de cambios en un acuerdo comercial |
+| Módulo | Paquete Python en `modules/` que registra sus propias rutas HTTP vía `register_routes(router)` |
+| RequestContext | Objeto inmutable pasado a handlers de módulo con acceso al handler HTTP, query params y payload |

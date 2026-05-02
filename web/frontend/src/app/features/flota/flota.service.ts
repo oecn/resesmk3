@@ -10,7 +10,7 @@ import {
   FlotaProveedor,
   FlotaResumenSemanalData,
   FlotaVehiculo,
-} from '../../shared/models/dashboard.models';
+} from './flota.models';
 
 @Injectable({ providedIn: 'root' })
 export class FlotaService {

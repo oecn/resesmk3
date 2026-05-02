@@ -1,50 +1,50 @@
 import { CommonModule } from '@angular/common';
-import { Component, ElementRef, OnInit, ViewChild, computed, signal } from '@angular/core';
+import { Component, ElementRef, OnInit, ViewChild, computed, effect, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { NavigationEnd, Router, RouterOutlet } from '@angular/router';
 import { forkJoin } from 'rxjs';
 import { AuthService } from './core/auth/auth.service';
 import { CurrentUser } from './core/auth/auth.models';
-import { AdminUsersService } from './features/admin/users/admin-users.service';
-import { LoginComponent } from './features/auth/login/login.component';
+import { DashboardData, DistribucionLocal, MenudenciaSucursal, TopMenudencia } from './features/dashboard/dashboard.models';
 import { DashboardFeatureService } from './features/dashboard/dashboard.service';
-import { FlotaService } from './features/flota/flota.service';
-import { ComprasFaenaService } from './features/operaciones/compras-faena/compras-faena.service';
-import { DistribucionesService } from './features/operaciones/distribuciones/distribuciones.service';
-import { RecepcionService } from './features/operaciones/recepcion/recepcion.service';
-import { ResumenesService } from './features/resumenes/resumenes.service';
-import { FmtMoneyPipe } from './shared/pipes/fmt-money.pipe';
-import { FmtNumberPipe } from './shared/pipes/fmt-number.pipe';
 import {
-  AdminUser,
-  AdminUsersData,
-  CompraFaenaLote,
-  ComprasFaenaData,
-  DashboardData,
-  DistribucionLote,
-  DistribucionLocal,
-  DistribucionRow,
-  DistribucionesData,
   FlotaCatalogosData,
-  FlotaCombustibleRow,
   FlotaCombustibleImportPreviewResult,
   FlotaCombustibleImportPreviewRow,
+  FlotaCombustibleRow,
   FlotaGastoRow,
   FlotaProveedor,
   FlotaResumenSemanalData,
   FlotaTipoGasto,
   FlotaVehiculo,
-  LoteResumen,
-  MenudenciaSucursal,
-  RecepcionDistribucion,
+} from './features/flota/flota.models';
+import { FlotaService } from './features/flota/flota.service';
+import { CompraFaenaLote, ComprasFaenaData } from './features/operaciones/compras-faena/compras-faena.models';
+import { ComprasFaenaService } from './features/operaciones/compras-faena/compras-faena.service';
+import { DistribucionLote, DistribucionRow, DistribucionesData } from './features/operaciones/distribuciones/distribuciones.models';
+import { DistribucionesService } from './features/operaciones/distribuciones/distribuciones.service';
+import {
   RecepcionData,
+  RecepcionDistribucion,
   RecepcionMenudencia,
   RecepcionSucursalSlug,
-  ResumenesData,
-  TopMenudencia,
-} from './shared/models/dashboard.models';
+} from './features/operaciones/recepcion/recepcion.models';
+import { RecepcionService } from './features/operaciones/recepcion/recepcion.service';
+import { LoteResumen, ResumenesData } from './features/resumenes/resumenes.models';
+import { ResumenesService } from './features/resumenes/resumenes.service';
+import { FmtMoneyPipe } from './shared/pipes/fmt-money.pipe';
+import { FmtNumberPipe } from './shared/pipes/fmt-number.pipe';
 
-type AppView = 'dashboard' | 'compras-faena' | 'resumenes' | 'recepcion' | 'distribuciones' | 'usuarios' | 'flota';
+type AppView =
+  | 'dashboard'
+  | 'compras-faena'
+  | 'resumenes'
+  | 'recepcion'
+  | 'distribuciones'
+  | 'usuarios'
+  | 'flota'
+  | 'acuerdos-comerciales'
+  | 'archivos-directorio';
 type FlotaSection = 'resumen' | 'vehiculos' | 'combustible' | 'gastos';
 
 type OptionalKpiKey =
@@ -59,13 +59,16 @@ type OptionalKpiKey =
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterOutlet, LoginComponent, FmtNumberPipe, FmtMoneyPipe],
+  imports: [CommonModule, FormsModule, RouterOutlet, FmtNumberPipe, FmtMoneyPipe],
   templateUrl: './app.component.html',
   styleUrl: './app.component.css',
 })
 export class AppComponent implements OnInit {
+  private readonly authService = inject(AuthService);
   private readonly kpiStorageKey = 'reces-dashboard-kpis';
   private readonly themeStorageKey = 'reces-dashboard-theme';
+  private readonly viewStorageKey = 'reces-dashboard-view';
+  private loadedUserKey = '';
   @ViewChild('recepcionKgInput') recepcionKgInput?: ElementRef<HTMLInputElement>;
   vista: AppView = 'dashboard';
   viewMenuOpen = false;
@@ -162,14 +165,6 @@ export class AppComponent implements OnInit {
   resumenBusqueda = '';
   resumenMaxFilas = 500;
   resumenSeleccionados = new Set<number>();
-  usuarioNombre = '';
-  usuarioUsername = '';
-  usuarioPassword = '';
-  usuarioRol = 'recepcion';
-  usuarioSucursalPermitida = 'luque';
-  usuarioActivo = true;
-  usuarioPasswordEditId: number | null = null;
-  usuarioPasswordNueva = '';
   flotaSeccion: FlotaSection = 'resumen';
   flotaMes = new Date().getMonth() + 1;
   flotaSemana = this.flotaMes;
@@ -231,7 +226,6 @@ export class AppComponent implements OnInit {
   distribucionLoading = signal(false);
   compraLoading = signal(false);
   resumenLoading = signal(false);
-  usuariosLoading = signal(false);
   flotaLoading = signal(false);
   authLoading = signal(true);
   error = signal('');
@@ -240,18 +234,15 @@ export class AppComponent implements OnInit {
   recepcionOk = signal('');
   distribucionError = signal('');
   distribucionOk = signal('');
-  usuariosError = signal('');
-  usuariosOk = signal('');
   flotaError = signal('');
   flotaOk = signal('');
   ultimaActualizacion = signal('');
-  currentUser = signal<CurrentUser | null>(null);
+  currentUser = this.authService.currentUser;
   data = signal<DashboardData | null>(null);
   recepcion = signal<RecepcionData | null>(null);
   distribuciones = signal<DistribucionesData | null>(null);
   comprasFaena = signal<ComprasFaenaData | null>(null);
   resumenes = signal<ResumenesData | null>(null);
-  adminUsers = signal<AdminUsersData | null>(null);
   flotaCatalogos = signal<FlotaCatalogosData | null>(null);
   flotaCombustible = signal<FlotaCombustibleRow[]>([]);
   flotaCombustibleImportPreview = signal<FlotaCombustibleImportPreviewRow[]>([]);
@@ -267,6 +258,8 @@ export class AppComponent implements OnInit {
     '/distribuciones': 'distribuciones',
     '/usuarios': 'usuarios',
     '/flota': 'flota',
+    '/acuerdos-comerciales': 'acuerdos-comerciales',
+    '/archivos-directorio': 'archivos-directorio',
   };
   private readonly viewToRoute: Record<AppView, string> = {
     dashboard: '/dashboard',
@@ -276,6 +269,8 @@ export class AppComponent implements OnInit {
     distribuciones: '/distribuciones',
     usuarios: '/usuarios',
     flota: '/flota',
+    'acuerdos-comerciales': '/acuerdos-comerciales',
+    'archivos-directorio': '/archivos-directorio',
   };
 
   lotesFiltrados = computed(() => {
@@ -528,23 +523,50 @@ export class AppComponent implements OnInit {
 
   canManageOperations = computed(() => {
     const role = this.currentUser()?.rol;
-    return role === 'admin' || role === 'supervisor';
+    return (role === 'admin' || role === 'supervisor') && (this.canManageComprasFaena() || this.canManageDistribuciones());
+  });
+
+  canManageComprasFaena = computed(() => {
+    const role = this.currentUser()?.rol;
+    return (role === 'admin' || role === 'supervisor') && this.hasModule('compras-faena');
+  });
+
+  canManageDistribuciones = computed(() => {
+    const role = this.currentUser()?.rol;
+    return (role === 'admin' || role === 'supervisor') && this.hasModule('distribuciones');
   });
 
   canViewAnalytics = computed(() => {
     const role = this.currentUser()?.rol;
-    return role === 'admin' || role === 'supervisor';
+    return (role === 'admin' || role === 'supervisor') && (this.canViewDashboard() || this.canViewResumenes() || this.canViewAcuerdos());
   });
+
+  canViewDashboard = computed(() => {
+    const role = this.currentUser()?.rol;
+    return (role === 'admin' || role === 'supervisor') && this.hasModule('dashboard');
+  });
+
+  canViewResumenes = computed(() => {
+    const role = this.currentUser()?.rol;
+    return (role === 'admin' || role === 'supervisor') && this.hasModule('resumenes');
+  });
+
+  canViewAcuerdos = computed(() => {
+    const role = this.currentUser()?.rol;
+    return (role === 'admin' || role === 'supervisor') && this.hasModule('acuerdos-comerciales');
+  });
+
+  canViewArchivosDirectorio = computed(() => this.hasModule('archivos-directorio'));
 
   canManageRecepcion = computed(() => {
     const role = this.currentUser()?.rol;
-    return role === 'admin' || role === 'supervisor' || role === 'recepcion';
+    return (role === 'admin' || role === 'supervisor' || role === 'recepcion') && this.hasModule('recepcion');
   });
 
-  canManageUsers = computed(() => this.currentUser()?.rol === 'admin');
+  canManageUsers = computed(() => this.currentUser()?.rol === 'admin' && this.hasModule('usuarios'));
   canManageFlota = computed(() => {
     const role = this.currentUser()?.rol;
-    return role === 'admin' || role === 'supervisor' || role === 'recepcion';
+    return (role === 'admin' || role === 'supervisor' || role === 'recepcion') && this.hasModule('flota');
   });
   canManageFlotaProviders = computed(() => {
     const role = this.currentUser()?.rol;
@@ -604,12 +626,29 @@ export class AppComponent implements OnInit {
     };
   });
 
-  loginUsername = '';
-  loginPassword = '';
+  private hasModule(module: AppView): boolean {
+    const user = this.currentUser();
+    if (!user) {
+      return false;
+    }
+    const modules = user.modulos_permitidos;
+    if (Array.isArray(modules)) {
+      return modules.includes(module);
+    }
+    const role = user.rol;
+    if (role === 'admin') {
+      return true;
+    }
+    if (role === 'supervisor') {
+      return module !== 'usuarios';
+    }
+    if (role === 'recepcion') {
+      return module === 'recepcion' || module === 'flota';
+    }
+    return false;
+  }
 
   constructor(
-    private readonly authService: AuthService,
-    private readonly adminUsersService: AdminUsersService,
     private readonly dashboardService: DashboardFeatureService,
     private readonly flotaService: FlotaService,
     private readonly comprasFaenaService: ComprasFaenaService,
@@ -617,17 +656,42 @@ export class AppComponent implements OnInit {
     private readonly recepcionService: RecepcionService,
     private readonly resumenesService: ResumenesService,
     private readonly router: Router,
-  ) {}
+  ) {
+    effect(() => {
+      const user = this.currentUser();
+      const loading = this.authLoading();
+      if (!user) {
+        this.loadedUserKey = '';
+        return;
+      }
+      if (loading) {
+        return;
+      }
+      const userKey = String(user.id ?? user.username ?? user.nombre ?? '');
+      if (this.loadedUserKey === userKey) {
+        return;
+      }
+      this.loadedUserKey = userKey;
+      this.syncRecepcionScopeFromUser();
+      this.ensureVistaPermitida();
+      this.syncRouteFromVista(true);
+      this.cargarTodoInicial();
+    }, { allowSignalWrites: true });
+  }
 
   ngOnInit(): void {
     this.cargarPreferenciasKpis();
     this.cargarPreferenciaTema();
+    this.cargarVistaPreferida();
     this.setPeriodoSeleccionado();
     this.setComprasFaenaRangoDefault();
     this.syncVistaFromRoute(this.router.url);
     this.router.events.subscribe((event) => {
       if (event instanceof NavigationEnd) {
         this.syncVistaFromRoute(event.urlAfterRedirects);
+        if (this.currentUser()) {
+          this.ensureVistaPermitida();
+        }
       }
     });
     this.restoreSession();
@@ -637,44 +701,15 @@ export class AppComponent implements OnInit {
     this.authLoading.set(true);
     this.authError.set('');
     this.authService.getCurrentUser().subscribe({
-      next: ({ user }) => {
-        this.currentUser.set(user);
-        this.syncRecepcionScopeFromUser();
-        this.ensureVistaPermitida();
-        this.syncRouteFromVista(true);
+      next: () => {
         this.authLoading.set(false);
-        this.cargarTodoInicial();
       },
       error: (err) => {
-        this.currentUser.set(null);
+        this.authService.clearCurrentUser();
         this.authLoading.set(false);
         if (err?.status && err.status !== 401) {
           this.authError.set(err?.error?.error ?? 'No se pudo verificar la sesion.');
         }
-      },
-    });
-  }
-
-  login(): void {
-    this.authLoading.set(true);
-    this.authError.set('');
-    this.authService.login({
-      username: this.loginUsername,
-      password: this.loginPassword,
-    }).subscribe({
-      next: ({ user }) => {
-        this.currentUser.set(user);
-        this.syncRecepcionScopeFromUser();
-        this.ensureVistaPermitida();
-        this.syncRouteFromVista(true);
-        this.loginPassword = '';
-        this.authLoading.set(false);
-        this.cargarTodoInicial();
-      },
-      error: (err) => {
-        this.currentUser.set(null);
-        this.authError.set(err?.error?.error ?? 'No se pudo iniciar sesion.');
-        this.authLoading.set(false);
       },
     });
   }
@@ -684,9 +719,8 @@ export class AppComponent implements OnInit {
     this.authError.set('');
     this.authService.logout().subscribe({
       next: () => {
-        this.currentUser.set(null);
+        this.authService.clearCurrentUser();
         this.recepcionSucursal = 'itaugua';
-        this.loginPassword = '';
         this.authLoading.set(false);
         this.router.navigateByUrl('/login', { replaceUrl: true });
         this.limpiarDatosCargados();
@@ -699,17 +733,20 @@ export class AppComponent implements OnInit {
   }
 
   private cargarTodoInicial(): void {
-    if (this.canViewAnalytics()) {
+    if (this.canViewDashboard()) {
       this.cargar();
+    }
+    if (this.canViewResumenes()) {
       this.cargarResumenes();
     }
-    this.cargarRecepcion();
-    if (this.canManageOperations()) {
-      this.cargarDistribuciones();
-      this.cargarComprasFaena();
+    if (this.canManageRecepcion()) {
+      this.cargarRecepcion();
     }
-    if (this.canManageUsers()) {
-      this.cargarUsuarios();
+    if (this.canManageDistribuciones()) {
+      this.cargarDistribuciones();
+    }
+    if (this.canManageComprasFaena()) {
+      this.cargarComprasFaena();
     }
     if (this.canManageFlota()) {
       this.cargarFlota();
@@ -722,7 +759,6 @@ export class AppComponent implements OnInit {
     this.distribuciones.set(null);
     this.comprasFaena.set(null);
     this.resumenes.set(null);
-    this.adminUsers.set(null);
     this.flotaCatalogos.set(null);
     this.flotaCombustible.set([]);
     this.flotaGastos.set([]);
@@ -733,8 +769,6 @@ export class AppComponent implements OnInit {
     this.recepcionOk.set('');
     this.distribucionError.set('');
     this.distribucionOk.set('');
-    this.usuariosError.set('');
-    this.usuariosOk.set('');
     this.flotaError.set('');
     this.flotaOk.set('');
   }
@@ -753,6 +787,9 @@ export class AppComponent implements OnInit {
 
   private syncVistaFromRoute(url: string): void {
     const path = `/${String(url || '').split('?')[0].split('#')[0].replace(/^\/+/, '')}`;
+    if ((path === '/' || path === '/dashboard') && this.vista !== 'dashboard') {
+      return;
+    }
     const vista = this.routeToView[path === '/' ? '/dashboard' : path];
     if (vista && vista !== this.vista) {
       this.vista = vista;
@@ -767,35 +804,86 @@ export class AppComponent implements OnInit {
     }
   }
 
+  private firstAllowedView(): AppView {
+    if (this.canViewDashboard()) {
+      return 'dashboard';
+    }
+    if (this.canManageRecepcion()) {
+      return 'recepcion';
+    }
+    if (this.canManageFlota()) {
+      return 'flota';
+    }
+    if (this.canManageComprasFaena()) {
+      return 'compras-faena';
+    }
+    if (this.canManageDistribuciones()) {
+      return 'distribuciones';
+    }
+    if (this.canViewResumenes()) {
+      return 'resumenes';
+    }
+    if (this.canViewAcuerdos()) {
+      return 'acuerdos-comerciales';
+    }
+    if (this.canViewArchivosDirectorio()) {
+      return 'archivos-directorio';
+    }
+    if (this.canManageUsers()) {
+      return 'usuarios';
+    }
+    return 'dashboard';
+  }
+
   private ensureVistaPermitida(): void {
     if (this.vista === 'usuarios' && !this.canManageUsers()) {
-      this.vista = this.canManageRecepcion() ? 'recepcion' : 'dashboard';
+      this.vista = this.firstAllowedView();
       this.syncRouteFromVista(true);
       return;
     }
-    if ((this.vista === 'dashboard' || this.vista === 'resumenes') && !this.canViewAnalytics()) {
-      this.vista = this.canManageRecepcion() ? 'recepcion' : 'dashboard';
+    if (this.vista === 'dashboard' && !this.canViewDashboard()) {
+      this.vista = this.firstAllowedView();
       this.syncRouteFromVista(true);
       return;
     }
-    if ((this.vista === 'compras-faena' || this.vista === 'distribuciones') && !this.canManageOperations()) {
-      this.vista = this.canManageRecepcion() ? 'recepcion' : 'dashboard';
+    if (this.vista === 'resumenes' && !this.canViewResumenes()) {
+      this.vista = this.firstAllowedView();
+      this.syncRouteFromVista(true);
+      return;
+    }
+    if (this.vista === 'acuerdos-comerciales' && !this.canViewAcuerdos()) {
+      this.vista = this.firstAllowedView();
+      this.syncRouteFromVista(true);
+      return;
+    }
+    if (this.vista === 'archivos-directorio' && !this.canViewArchivosDirectorio()) {
+      this.vista = this.firstAllowedView();
+      this.syncRouteFromVista(true);
+      return;
+    }
+    if (this.vista === 'compras-faena' && !this.canManageComprasFaena()) {
+      this.vista = this.firstAllowedView();
+      this.syncRouteFromVista(true);
+      return;
+    }
+    if (this.vista === 'distribuciones' && !this.canManageDistribuciones()) {
+      this.vista = this.firstAllowedView();
       this.syncRouteFromVista(true);
       return;
     }
     if (this.vista === 'flota' && !this.canManageFlota()) {
-      this.vista = this.canManageRecepcion() ? 'recepcion' : 'dashboard';
+      this.vista = this.firstAllowedView();
       this.syncRouteFromVista(true);
       return;
     }
     if (this.vista === 'recepcion' && !this.canManageRecepcion()) {
-      this.vista = 'dashboard';
+      this.vista = this.firstAllowedView();
       this.syncRouteFromVista(true);
     }
   }
 
   cargar(): void {
-    if (!this.canViewAnalytics()) {
+    if (!this.canViewDashboard()) {
       return;
     }
     this.loading.set(true);
@@ -945,8 +1033,27 @@ export class AppComponent implements OnInit {
     this.darkMode = localStorage.getItem(this.themeStorageKey) === 'dark';
   }
 
+  private cargarVistaPreferida(): void {
+    const stored = localStorage.getItem(this.viewStorageKey) as AppView | null;
+    if (stored && this.viewToRoute[stored]) {
+      this.vista = stored;
+    }
+  }
+
   cambiarVista(vista: AppView): void {
-    if ((vista === 'dashboard' || vista === 'resumenes') && !this.canViewAnalytics()) {
+    if (vista === 'dashboard' && !this.canViewDashboard()) {
+      this.closeViewMenu();
+      return;
+    }
+    if (vista === 'resumenes' && !this.canViewResumenes()) {
+      this.closeViewMenu();
+      return;
+    }
+    if (vista === 'acuerdos-comerciales' && !this.canViewAcuerdos()) {
+      this.closeViewMenu();
+      return;
+    }
+    if (vista === 'archivos-directorio' && !this.canViewArchivosDirectorio()) {
       this.closeViewMenu();
       return;
     }
@@ -958,7 +1065,11 @@ export class AppComponent implements OnInit {
       this.closeViewMenu();
       return;
     }
-    if ((vista === 'compras-faena' || vista === 'distribuciones') && !this.canManageOperations()) {
+    if (vista === 'compras-faena' && !this.canManageComprasFaena()) {
+      this.closeViewMenu();
+      return;
+    }
+    if (vista === 'distribuciones' && !this.canManageDistribuciones()) {
       this.closeViewMenu();
       return;
     }
@@ -967,6 +1078,7 @@ export class AppComponent implements OnInit {
       return;
     }
     this.vista = vista;
+    localStorage.setItem(this.viewStorageKey, vista);
     this.syncRouteFromVista();
     this.closeViewMenu();
     if (vista === 'compras-faena' && !this.comprasFaena()) {
@@ -980,9 +1092,6 @@ export class AppComponent implements OnInit {
     }
     if (vista === 'distribuciones' && !this.distribuciones()) {
       this.cargarDistribuciones();
-    }
-    if (vista === 'usuarios' && !this.adminUsers()) {
-      this.cargarUsuarios();
     }
     if (vista === 'flota' && !this.flotaCatalogos()) {
       this.cargarFlota();
@@ -1016,112 +1125,6 @@ export class AppComponent implements OnInit {
     this.flotaSemana = this.flotaMes;
     this.flotaAnho = selected.getFullYear();
     this.cargarFlotaResumen();
-  }
-
-  cargarUsuarios(): void {
-    if (!this.canManageUsers()) {
-      return;
-    }
-    this.usuariosLoading.set(true);
-    this.usuariosError.set('');
-    this.adminUsersService.getAdminUsers().subscribe({
-      next: (data) => {
-        this.adminUsers.set(data);
-        if (!data.roles.includes(this.usuarioRol)) {
-          this.usuarioRol = data.roles[0] ?? 'recepcion';
-        }
-        this.ajustarFormularioSucursal();
-        this.usuariosLoading.set(false);
-      },
-      error: (err) => {
-        this.usuariosError.set(err?.error?.error ?? 'No se pudo cargar usuarios.');
-        this.usuariosLoading.set(false);
-      },
-    });
-  }
-
-  crearUsuario(): void {
-    this.usuariosLoading.set(true);
-    this.usuariosError.set('');
-    this.usuariosOk.set('');
-    this.adminUsersService.createAdminUser({
-      username: this.usuarioUsername,
-      nombre: this.usuarioNombre,
-      password: this.usuarioPassword,
-      rol: this.usuarioRol,
-      sucursal_permitida: this.usuarioRol === 'recepcion' ? this.usuarioSucursalPermitida : null,
-      activo: this.usuarioActivo,
-    }).subscribe({
-      next: () => {
-        this.usuarioNombre = '';
-        this.usuarioUsername = '';
-        this.usuarioPassword = '';
-        this.usuarioRol = this.adminUsers()?.roles[0] ?? 'recepcion';
-        this.usuarioSucursalPermitida = 'luque';
-        this.usuarioActivo = true;
-        this.usuariosOk.set('Usuario creado.');
-        this.cargarUsuarios();
-      },
-      error: (err) => {
-        this.usuariosError.set(err?.error?.error ?? 'No se pudo crear el usuario.');
-        this.usuariosLoading.set(false);
-      },
-    });
-  }
-
-  guardarUsuario(user: AdminUser): void {
-    this.usuariosLoading.set(true);
-    this.usuariosError.set('');
-    this.usuariosOk.set('');
-    this.adminUsersService.updateAdminUser({
-      id: user.id,
-      nombre: user.nombre,
-      rol: user.rol,
-      sucursal_permitida: user.rol === 'recepcion' ? (user.sucursal_permitida ?? 'luque') : null,
-      activo: user.activo,
-    }).subscribe({
-      next: () => {
-        this.usuariosOk.set(`Usuario ${user.username} actualizado.`);
-        this.cargarUsuarios();
-      },
-      error: (err) => {
-        this.usuariosError.set(err?.error?.error ?? 'No se pudo actualizar el usuario.');
-        this.usuariosLoading.set(false);
-      },
-    });
-  }
-
-  iniciarCambioPassword(user: AdminUser): void {
-    this.usuarioPasswordEditId = user.id;
-    this.usuarioPasswordNueva = '';
-    this.usuariosError.set('');
-    this.usuariosOk.set('');
-  }
-
-  cancelarCambioPassword(): void {
-    this.usuarioPasswordEditId = null;
-    this.usuarioPasswordNueva = '';
-  }
-
-  guardarPasswordUsuario(user: AdminUser): void {
-    this.usuariosLoading.set(true);
-    this.usuariosError.set('');
-    this.usuariosOk.set('');
-    this.adminUsersService.updateAdminPassword({
-      id: user.id,
-      password: this.usuarioPasswordNueva,
-    }).subscribe({
-      next: () => {
-        this.usuariosOk.set(`Password actualizada para ${user.username}.`);
-        this.usuarioPasswordEditId = null;
-        this.usuarioPasswordNueva = '';
-        this.cargarUsuarios();
-      },
-      error: (err) => {
-        this.usuariosError.set(err?.error?.error ?? 'No se pudo actualizar la password.');
-        this.usuariosLoading.set(false);
-      },
-    });
   }
 
   cargarFlota(showLoading = true): void {
@@ -2436,16 +2439,6 @@ export class AppComponent implements OnInit {
     this.recepcionBusqueda = '';
     this.menuBusqueda = '';
     this.cargarRecepcion();
-  }
-
-  onUsuarioRolChange(): void {
-    this.ajustarFormularioSucursal();
-  }
-
-  private ajustarFormularioSucursal(): void {
-    if (this.usuarioRol !== 'recepcion') {
-      this.usuarioSucursalPermitida = 'luque';
-    }
   }
 
   seleccionarDistribucion(row: RecepcionDistribucion): void {

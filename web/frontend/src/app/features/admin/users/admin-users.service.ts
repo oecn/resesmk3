@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
 import { ApiService } from '../../../core/http/api.service';
-import { AdminUser, AdminUsersData } from '../../../shared/models/dashboard.models';
+import { AdminUser, AdminUsersData } from './admin-users.models';
 
 @Injectable({ providedIn: 'root' })
 export class AdminUsersService {
@@ -18,6 +18,7 @@ export class AdminUsersService {
     rol: string;
     sucursal_permitida?: string | null;
     activo?: boolean;
+    modulos_permitidos?: string[];
   }): Observable<{ user: AdminUser }> {
     return this.api.post<{ user: AdminUser }>('/auth/users', payload);
   }
@@ -28,6 +29,7 @@ export class AdminUsersService {
     rol: string;
     sucursal_permitida?: string | null;
     activo: boolean;
+    modulos_permitidos?: string[];
   }): Observable<{ user: AdminUser }> {
     return this.api.put<{ user: AdminUser }>('/auth/users', payload);
   }

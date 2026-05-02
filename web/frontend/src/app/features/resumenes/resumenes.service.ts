@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
 import { ApiService } from '../../core/http/api.service';
-import { ResumenesData } from '../../shared/models/dashboard.models';
+import { ResumenesData } from './resumenes.models';
 
 @Injectable({ providedIn: 'root' })
 export class ResumenesService {
