@@ -1,0 +1,111 @@
+<p *ngIf="error()" class="alert">{{ error() }}</p>
+<p *ngIf="ok()" class="success-alert">{{ ok() }}</p>
+<p *ngIf="loading()" class="muted">Cargando gastos de flota...</p>
+
+<section class="panel-grid flota-mov-grid">
+  <section class="panel">
+    <div class="panel-title">
+      <h2>{{ gastoEditId ? 'Editar gasto' : 'Gasto adicional' }}</h2>
+      <span>{{ gastoEditId ? 'Edicion de registro' : 'Mantenimiento y otros' }}</span>
+    </div>
+    <form class="form-grid" (ngSubmit)="crearGastoFlota()">
+      <label>
+        Fecha
+        <input type="date" name="gastoFecha" [(ngModel)]="gastoFecha" required>
+      </label>
+      <label>
+        Vehiculo
+        <select name="gastoVehiculoId" [(ngModel)]="gastoVehiculoId" required>
+          <option *ngFor="let vehiculo of vehiculos" [ngValue]="vehiculo.id">{{ vehiculoDisplayLabel(vehiculo) }}</option>
+        </select>
+      </label>
+      <label>
+        Tipo de gasto
+        <select name="gastoTipoId" [(ngModel)]="gastoTipoId" required>
+          <option *ngFor="let tipo of tiposGasto" [ngValue]="tipo.id">{{ tipo.nombre }}</option>
+        </select>
+      </label>
+      <label>
+        Proveedor
+        <select name="gastoProveedorId" [(ngModel)]="gastoProveedorId">
+          <option [ngValue]="null">Sin proveedor</option>
+          <option *ngFor="let proveedor of proveedores" [ngValue]="proveedor.id">{{ proveedor.nombre }}</option>
+        </select>
+      </label>
+      <label>
+        Nombre proveedor
+        <input type="text" name="gastoProveedorNombre" [(ngModel)]="gastoProveedorNombre" placeholder="Proveedor puntual o razon social">
+      </label>
+      <label>
+        RUC proveedor
+        <input type="text" name="gastoProveedorRuc" [(ngModel)]="gastoProveedorRuc" placeholder="RUC del comprobante">
+      </label>
+      <label>
+        Importe
+        <input type="number" min="0" step="0.01" name="gastoImporte" [(ngModel)]="gastoImporte" required>
+      </label>
+      <label>
+        Km actual
+        <input type="number" min="0" step="0.01" name="gastoKmActual" [(ngModel)]="gastoKmActual">
+      </label>
+      <label>
+        Factura
+        <input type="text" name="gastoFactura" [(ngModel)]="gastoFactura">
+      </label>
+      <label class="full-span">
+        Detalle
+        <textarea name="gastoDetalle" [(ngModel)]="gastoDetalle"></textarea>
+      </label>
+      <div class="inline-actions full-span">
+        <button type="submit" [disabled]="loading()">{{ gastoEditId ? 'Guardar cambios' : 'Guardar gasto' }}</button>
+        <button type="button" class="secondary" *ngIf="gastoEditId" (click)="cancelarEdicionGasto()" [disabled]="loading()">Cancelar</button>
+      </div>
+    </form>
+  </section>
+</section>
+
+<section class="panel-grid flota-history-grid">
+  <section class="panel gastos-history-panel">
+    <div class="panel-title">
+      <h2>Ultimos gastos</h2>
+      <span>{{ flotaGastos().length }} registros</span>
+    </div>
+    <div class="table-wrap">
+      <table class="compact-table">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Fecha</th>
+            <th>Vehiculo</th>
+            <th>Tipo</th>
+            <th>Proveedor</th>
+            <th>Importe</th>
+            <th>Km</th>
+            <th>Factura</th>
+            <th>Detalle</th>
+            <th>Accion</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let row of flotaGastos()">
+            <td>{{ row.id }}</td>
+            <td>{{ row.fecha }}</td>
+            <td>{{ vehiculoMovLabel(row) }}</td>
+            <td>{{ row.tipo_gasto }}</td>
+            <td>{{ row.proveedor_nombre || '-' }}<span *ngIf="row.proveedor_ruc"> / {{ row.proveedor_ruc }}</span></td>
+            <td>{{ (row.importe | fmtMoney) }}</td>
+            <td>{{ row.km_actual ? (row.km_actual | fmtNumber:0) : '-' }}</td>
+            <td>{{ row.nro_factura || '-' }}</td>
+            <td>{{ row.detalle || '-' }}</td>
+            <td>
+              <div class="inline-actions">
+                <button type="button" class="secondary mini-button" (click)="editarGastoFlota(row)" [disabled]="loading() || !canModifyGastoFlota(row)">Editar</button>
+                <button type="button" class="danger mini-button" (click)="eliminarGastoFlota(row)" [disabled]="loading() || !canModifyGastoFlota(row)">Eliminar</button>
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+</section>

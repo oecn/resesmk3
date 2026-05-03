@@ -1,0 +1,216 @@
+<p *ngIf="error()" class="alert">{{ error() }}</p>
+<p *ngIf="ok()" class="success-alert">{{ ok() }}</p>
+<p *ngIf="loading()" class="muted">Cargando combustible...</p>
+
+<section class="panel-grid flota-mov-grid">
+  <section class="panel">
+    <div class="panel-title">
+      <h2>Carga de combustible</h2>
+      <span>Registro por evento</span>
+    </div>
+    <div class="recepcion-toolbar flota-toolbar">
+      <label>
+        Vehiculo historial
+        <select name="flotaVehiculoId" [(ngModel)]="flotaVehiculoId">
+          <option [ngValue]="null">Todos</option>
+          <option *ngFor="let vehiculo of vehiculos" [ngValue]="vehiculo.id">{{ vehiculoDisplayLabel(vehiculo) }}</option>
+        </select>
+      </label>
+      <label>
+        Desde
+        <input type="date" name="combustibleDesde" [(ngModel)]="combustibleDesde">
+      </label>
+      <label>
+        Hasta
+        <input type="date" name="combustibleHasta" [(ngModel)]="combustibleHasta">
+      </label>
+      <button type="button" (click)="cargarFlotaCombustible()" [disabled]="loading()">Ver historico</button>
+      <button type="button" class="secondary" (click)="limpiarFiltrosCombustible()" [disabled]="loading()">Limpiar</button>
+    </div>
+    <section class="insight-grid compact-insights">
+      <article class="insight-card">
+        <div>
+          <span>Cargas</span>
+          <strong>{{ (flotaCombustibleResumen().cargas | fmtNumber) }}</strong>
+        </div>
+        <p>Movimientos encontrados en el periodo.</p>
+      </article>
+      <article class="insight-card">
+        <div>
+          <span>Litros acumulados</span>
+          <strong>{{ (flotaCombustibleResumen().litros | fmtNumber:2) }}</strong>
+        </div>
+        <p>Consumo historico del filtro actual.</p>
+      </article>
+      <article class="insight-card">
+        <div>
+          <span>Importe total</span>
+          <strong>{{ (flotaCombustibleResumen().importe | fmtMoney) }}</strong>
+        </div>
+        <p>Promedio {{ flotaCombustibleResumen().promedioLitro ? (flotaCombustibleResumen().promedioLitro | fmtMoney) : '-' }}/litro.</p>
+      </article>
+      <article class="insight-card">
+        <div>
+          <span>Ultima carga</span>
+          <strong>{{ flotaCombustibleResumen().ultimaFecha || '-' }}</strong>
+        </div>
+        <p>Fecha mas reciente dentro del historico mostrado.</p>
+      </article>
+    </section>
+    <div class="subpanel-note" *ngIf="canImport">
+      <div>
+        <strong>Importador Excel/CSV</strong>
+        <p>Columnas esperadas: Vehiculo, Fecha Real, Producto, Cantidad, Precio o Importe, Codigo de Autorizacion.</p>
+      </div>
+      <div class="form-grid compact-form">
+        <label>
+          Archivo
+          <input type="file" accept=".csv,.xlsx,.xlsm" (change)="onCombustibleImportSelected($event)">
+        </label>
+        <label>
+          Proveedor comun
+          <select name="combustibleImportProveedorId" [(ngModel)]="combustibleImportProveedorId">
+            <option [ngValue]="null">Sin proveedor</option>
+            <option *ngFor="let proveedor of proveedores" [ngValue]="proveedor.id">{{ proveedor.nombre }}</option>
+          </select>
+        </label>
+        <div class="inline-actions">
+          <button type="button" class="secondary" (click)="previsualizarCombustibleArchivo()" [disabled]="loading()">Vista previa</button>
+          <button type="button" class="secondary" (click)="importarCombustibleArchivo()" [disabled]="loading()">Importar archivo</button>
+          <span class="muted-text">{{ combustibleImportFileName || 'Ningun archivo seleccionado' }}</span>
+        </div>
+      </div>
+    </div>
+    <section class="panel preview-panel" *ngIf="canImport && flotaCombustibleImportPreviewSummary() as preview">
+      <div class="panel-title">
+        <h2>Vista previa de importacion</h2>
+        <span>{{ preview.ok_count }} validas - {{ preview.error_count }} con error - {{ preview.skipped }} omitidas</span>
+      </div>
+      <div class="table-wrap">
+        <table class="compact-table">
+          <thead>
+            <tr>
+              <th>Fila</th>
+              <th>Vehiculo excel</th>
+              <th>Vehiculo sistema</th>
+              <th>Fecha</th>
+              <th>Producto</th>
+              <th>Litros</th>
+              <th>Precio/litro</th>
+              <th>Importe</th>
+              <th>Factura</th>
+              <th>Estado</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let row of flotaCombustibleImportPreview()">
+              <td>{{ row.row }}</td>
+              <td>{{ row.vehiculo_ref || '-' }}</td>
+              <td>{{ row.vehiculo_match || '-' }}</td>
+              <td>{{ row.fecha || '-' }}</td>
+              <td>{{ row.tipo_combustible || '-' }}</td>
+              <td>{{ row.status === 'ok' ? (row.litros | fmtNumber:2) : '-' }}</td>
+              <td>{{ row.status === 'ok' ? (row.precio_litro | fmtMoney) : '-' }}</td>
+              <td>{{ row.status === 'ok' ? (row.importe | fmtMoney) : '-' }}</td>
+              <td>{{ row.nro_factura || '-' }}</td>
+              <td>
+                <span [class.preview-ok]="row.status === 'ok'" [class.preview-error]="row.status === 'error'">
+                  {{ row.status === 'ok' ? 'OK' : (row.error || 'Error') }}
+                </span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+    <form class="form-grid" (ngSubmit)="crearCargaCombustible()">
+      <label>
+        Fecha
+        <input type="date" name="combustibleFecha" [(ngModel)]="combustibleFecha" required>
+      </label>
+      <label>
+        Vehiculo
+        <select name="combustibleVehiculoId" [(ngModel)]="combustibleVehiculoId" required>
+          <option *ngFor="let vehiculo of vehiculos" [ngValue]="vehiculo.id">{{ vehiculoDisplayLabel(vehiculo) }}</option>
+        </select>
+      </label>
+      <label>
+        Proveedor
+        <select name="combustibleProveedorId" [(ngModel)]="combustibleProveedorId">
+          <option [ngValue]="null">Sin proveedor</option>
+          <option *ngFor="let proveedor of proveedores" [ngValue]="proveedor.id">{{ proveedor.nombre }}</option>
+        </select>
+      </label>
+      <label>
+        Tipo de combustible
+        <select name="combustibleTipo" [(ngModel)]="combustibleTipo">
+          <option *ngFor="let tipo of tiposCombustible" [value]="tipo">{{ tipo }}</option>
+        </select>
+      </label>
+      <label>
+        Litros
+        <input type="number" min="0" step="0.01" name="combustibleLitros" [(ngModel)]="combustibleLitros" required>
+      </label>
+      <label>
+        Importe
+        <input type="number" min="0" step="0.01" name="combustibleImporte" [(ngModel)]="combustibleImporte" required>
+      </label>
+      <label>
+        Costo por litro
+        <input type="text" [value]="combustiblePrecioLitro() ? (combustiblePrecioLitro() | fmtMoney) : '-'" readonly>
+      </label>
+      <label>
+        Factura
+        <input type="text" name="combustibleFactura" [(ngModel)]="combustibleFactura">
+      </label>
+      <label class="full-span">
+        Observacion
+        <textarea name="combustibleObservacion" [(ngModel)]="combustibleObservacion"></textarea>
+      </label>
+      <button type="submit" [disabled]="loading()">Guardar carga</button>
+    </form>
+  </section>
+</section>
+
+<section class="panel-grid flota-history-grid">
+  <section class="panel">
+    <div class="panel-title">
+      <h2>Historico de cargas</h2>
+      <span>{{ flotaCombustible().length }} registros</span>
+    </div>
+    <div class="table-wrap">
+      <table class="compact-table">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Fecha</th>
+            <th>Vehiculo</th>
+            <th>Tipo</th>
+            <th>Litros</th>
+            <th>Importe</th>
+            <th>Costo/litro</th>
+            <th>Km</th>
+            <th>Factura</th>
+            <th>Accion</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let row of flotaCombustible()">
+            <td>{{ row.id }}</td>
+            <td>{{ row.fecha }}</td>
+            <td>{{ vehiculoMovLabel(row) }}</td>
+            <td>{{ row.tipo_combustible || '-' }}</td>
+            <td>{{ (row.litros | fmtNumber:2) }}</td>
+            <td>{{ (row.importe | fmtMoney) }}</td>
+            <td>{{ (row.precio_litro | fmtMoney) }}</td>
+            <td>{{ row.km_actual ? (row.km_actual | fmtNumber:0) : '-' }}</td>
+            <td>{{ row.nro_factura || '-' }}</td>
+            <td>
+              <button type="button" class="danger mini-button" (click)="eliminarCargaCombustible(row)" [disabled]="loading()">Eliminar</button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+</section>

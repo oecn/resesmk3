@@ -1,0 +1,287 @@
+<section class="topbar">
+  <div>
+    <p class="eyebrow">Operaciones</p>
+    <h1>Compras y faena</h1>
+    <p class="subtitle">Registro de lotes comprados, faena y correcciones por lote.</p>
+  </div>
+</section>
+
+<section class="operation-page">
+    <p *ngIf="compraLoading()" class="muted">Guardando o cargando compras y faena...</p>
+
+    <ng-container *ngIf="comprasFaena() as cf">
+      <section class="insight-grid">
+        <article class="insight-card">
+          <div>
+            <span>Lotes registrados</span>
+            <strong>{{ (cf.resumen.lotes_registrados | fmtNumber) }}</strong>
+          </div>
+        </article>
+        <article class="insight-card">
+          <div>
+            <span>Reses en Camara</span>
+            <strong>{{ (cf.resumen.reses_camara | fmtNumber) }}</strong>
+          </div>
+        </article>
+        <article class="insight-card">
+          <div>
+            <span>Reses sin Faenar</span>
+            <strong>{{ (cf.resumen.reses_sin_faenar | fmtNumber) }}</strong>
+          </div>
+        </article>
+      </section>
+
+      <section class="panel compras-panel">
+        <div class="panel-title">
+          <h2>Compras y faena</h2>
+          <span>{{ compraLotesFiltrados().length }} de {{ cf.lotes.length }} lotes</span>
+        </div>
+
+        <article class="subpanel compact-distribution-form">
+          <fieldset>
+            <legend>Registrar compra de lote</legend>
+            <div class="distribution-form-grid">
+              <label>
+                Lote
+                <span class="inline-input-action">
+                  <input type="text" name="compraLote" [(ngModel)]="compraLote" (ngModelChange)="marcarCompraLoteManual()">
+                  <button type="button" class="secondary mini-button" (click)="forzarAutofillCompraLote()" [disabled]="compraLoading()">Auto</button>
+                </span>
+              </label>
+              <label>
+                Empresa
+                <select name="compraEmpresa" [(ngModel)]="compraEmpresa" (ngModelChange)="maybeAutofillCompraLote()">
+                  <option *ngFor="let empresa of cf.empresas" [ngValue]="empresa">{{ empresa }}</option>
+                </select>
+              </label>
+              <label>
+                Fecha
+                <input type="date" name="compraFecha" [(ngModel)]="compraFecha" (ngModelChange)="maybeAutofillCompraLote()">
+              </label>
+              <label>
+                Cantidad
+                <input type="number" min="1" step="1" name="compraCantidad" [(ngModel)]="compraCantidad" (ngModelChange)="maybeAutofillCompraLote()">
+              </label>
+              <label>
+                Monto Gs
+                <input type="number" min="0" step="1" name="compraMonto" [(ngModel)]="compraMonto">
+              </label>
+              <label>
+                Peso kg
+                <input type="number" min="0" step="0.01" name="compraPesoKg" [(ngModel)]="compraPesoKg">
+              </label>
+              <div class="distribution-form-actions">
+                <button type="button" (click)="guardarCompraLote()" [disabled]="compraLoading()">Guardar lote</button>
+              </div>
+            </div>
+          </fieldset>
+        </article>
+
+        <div class="table-tools compra-table-tools">
+          <div class="compra-range-tools">
+            <label>
+              Desde
+              <input type="date" name="compraDesde" [(ngModel)]="compraDesde">
+            </label>
+            <label>
+              Hasta
+              <input type="date" name="compraHasta" [(ngModel)]="compraHasta">
+            </label>
+            <div class="distribution-actions-row">
+              <button type="button" class="secondary" (click)="setComprasFaenaRangoDefault()">Mes anterior + actual</button>
+              <button type="button" class="secondary" (click)="limpiarComprasFaenaRango()">Ver todo</button>
+            </div>
+          </div>
+          <label class="compra-search-field">
+            Buscar lote
+            <input type="search" name="compraBusqueda" [(ngModel)]="compraBusqueda" placeholder="Lote, empresa o fecha">
+          </label>
+          <div class="distribution-actions-row compra-actions">
+            <button type="button" class="warning-action" (click)="abrirEditarCompra()" [disabled]="compraLoading() || !compraLoteId">Editar compra</button>
+            <button type="button" (click)="abrirRegistrarFaena()" [disabled]="compraLoading() || !compraLoteId">Registrar faena</button>
+          </div>
+        </div>
+
+        <div class="table-wrap">
+          <table class="recepcion-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Lote</th>
+                <th>Empresa</th>
+                <th>Fecha</th>
+                <th>Cant. compra</th>
+                <th>Faenado</th>
+                <th>Restante</th>
+                <th>Monto</th>
+                <th>Peso kg</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                *ngFor="let lote of compraLotesFiltrados()"
+                [class.selected]="lote.id === compraLoteId"
+                [ngClass]="compraLoteClass(lote)"
+                (click)="seleccionarCompraLote(lote)"
+              >
+                <td>{{ lote.id }}</td>
+                <td>{{ lote.lote }}</td>
+                <td>{{ lote.empresa }}</td>
+                <td>{{ lote.fecha }}</td>
+                <td>{{ (lote.cantidad | fmtNumber) }}</td>
+                <td>{{ (lote.faenado | fmtNumber) }}</td>
+                <td>{{ (lote.restante | fmtNumber) }}</td>
+                <td>{{ (lote.monto | fmtMoney) }}</td>
+                <td>{{ (lote.peso_compra_kg | fmtNumber:2) }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <section class="panel-grid compras-bottom-grid">
+          <article class="subpanel">
+            <div class="panel-title tight">
+              <h2>Faenas del lote seleccionado</h2>
+              <span>{{ cf.faenas.length }} registros</span>
+            </div>
+            <div class="table-wrap">
+              <table class="compact-table">
+                <thead>
+                  <tr>
+                    <th>Fecha</th>
+                    <th>Cantidad</th>
+                    <th>Nota</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr *ngFor="let row of cf.faenas">
+                    <td>{{ row.fecha }}</td>
+                    <td>{{ (row.cantidad | fmtNumber) }}</td>
+                    <td class="note-cell"><span class="note-preview">{{ row.nota || '-' }}</span></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </article>
+
+          <article class="subpanel compact-distribution-form">
+            <div class="panel-title tight">
+              <h2>Corregir faena del lote</h2>
+              <span *ngIf="compraLoteSeleccionado() as lote">{{ lote.lote }}</span>
+            </div>
+
+            <ng-container *ngIf="compraLoteSeleccionado() as lote; else compraSinLoteSeleccionado">
+              <div class="local-summary-grid correction-summary-grid">
+                <div class="local-summary-card">
+                  <span>Compra</span>
+                  <strong>{{ (lote.cantidad | fmtNumber) }}</strong>
+                  <small>Reces compradas</small>
+                </div>
+                <div class="local-summary-card">
+                  <span>Faenado actual</span>
+                  <strong>{{ (lote.faenado | fmtNumber) }}</strong>
+                  <small>Total cargado hoy</small>
+                </div>
+                <div class="local-summary-card">
+                  <span>Distribuido</span>
+                  <strong>{{ (lote.distribuidas | fmtNumber) }}</strong>
+                  <small>Minimo permitido</small>
+                </div>
+              </div>
+
+              <div class="form-grid">
+                <label>Fecha <input type="date" name="faenaAjusteFecha" [(ngModel)]="faenaAjusteFecha"></label>
+                <label>
+                  Nueva cantidad total faenada
+                  <input type="number" min="0" step="1" name="faenaAjusteCantidad" [(ngModel)]="faenaAjusteCantidad">
+                </label>
+              </div>
+              <label class="note-field">
+                Motivo del ajuste
+                <textarea name="faenaAjusteNota" rows="4" [(ngModel)]="faenaAjusteNota" placeholder="Ej.: informaron menos reces faenadas para este lote"></textarea>
+              </label>
+              <p class="muted correction-help">
+                Este ajuste reemplaza el total de faena del lote. No puede ser menor a {{ (lote.distribuidas | fmtNumber) }} ni mayor a {{ (lote.cantidad | fmtNumber) }}.
+              </p>
+              <div class="modal-actions">
+                <button type="button" class="warning-action" (click)="guardarFaenaCorregida()" [disabled]="compraLoading()">Aplicar correccion</button>
+              </div>
+            </ng-container>
+
+            <ng-template #compraSinLoteSeleccionado>
+              <p class="muted empty-local">Selecciona un lote para corregir su total de faena.</p>
+            </ng-template>
+          </article>
+
+          <article class="subpanel">
+            <div class="panel-title tight">
+              <h2>Pendientes y completados</h2>
+              <span>{{ cf.pendientes.length }} pendientes | {{ cf.completados.length }} completados</span>
+            </div>
+            <div class="local-summary-grid">
+              <div class="local-summary-card">
+                <span>Pendientes</span>
+                <strong>{{ (cf.pendientes.length | fmtNumber) }} lotes</strong>
+                <small>{{ (cf.resumen.lotes_pendientes | fmtNumber) }} con saldo</small>
+              </div>
+              <div class="local-summary-card">
+                <span>Completados</span>
+                <strong>{{ (cf.completados.length | fmtNumber) }} lotes</strong>
+                <small>Restante = 0</small>
+              </div>
+            </div>
+          </article>
+        </section>
+
+        <div class="modal-backdrop" *ngIf="compraEditModalOpen && compraLoteSeleccionado() as lote">
+          <section class="modal-card" role="dialog" aria-modal="true" aria-label="Editar compra">
+            <div class="panel-title">
+              <h2>Editar compra</h2>
+              <button type="button" class="secondary mini-button" (click)="compraEditModalOpen = false" [disabled]="compraLoading()">Cerrar</button>
+            </div>
+            <div class="form-grid">
+              <label>Lote <input type="text" name="modalCompraLote" [(ngModel)]="modalCompraLote"></label>
+              <label>
+                Empresa
+                <select name="modalCompraEmpresa" [(ngModel)]="modalCompraEmpresa">
+                  <option *ngFor="let empresa of cf.empresas" [ngValue]="empresa">{{ empresa }}</option>
+                </select>
+              </label>
+              <label>Fecha <input type="date" name="modalCompraFecha" [(ngModel)]="modalCompraFecha"></label>
+              <label>Cantidad <input type="number" min="1" step="1" name="modalCompraCantidad" [(ngModel)]="modalCompraCantidad"></label>
+              <label>Monto Gs <input type="number" min="0" step="1" name="modalCompraMonto" [(ngModel)]="modalCompraMonto"></label>
+              <label>Peso kg <input type="number" min="0" step="0.01" name="modalCompraPesoKg" [(ngModel)]="modalCompraPesoKg"></label>
+            </div>
+            <div class="modal-actions">
+              <button type="button" (click)="guardarCompraEditada()" [disabled]="compraLoading()">Guardar cambios</button>
+              <button type="button" class="secondary" (click)="compraEditModalOpen = false" [disabled]="compraLoading()">Cancelar</button>
+            </div>
+          </section>
+        </div>
+
+        <div class="modal-backdrop" *ngIf="faenaModalOpen && compraLoteSeleccionado() as lote">
+          <section class="modal-card" role="dialog" aria-modal="true" aria-label="Registrar faena">
+            <div class="panel-title">
+              <div>
+                <h2>Registrar faena</h2>
+                <p class="muted">{{ lote.lote }} | Restante: {{ (lote.restante | fmtNumber) }} reces</p>
+              </div>
+              <button type="button" class="secondary mini-button" (click)="faenaModalOpen = false" [disabled]="compraLoading()">Cerrar</button>
+            </div>
+            <div class="form-grid">
+              <label>Fecha <input type="date" name="faenaFecha" [(ngModel)]="faenaFecha"></label>
+              <label>Cantidad a faenar <input type="number" min="1" step="1" name="faenaCantidad" [(ngModel)]="faenaCantidad"></label>
+            </div>
+            <label class="note-field">
+              Nota
+              <textarea name="faenaNota" rows="4" [(ngModel)]="faenaNota"></textarea>
+            </label>
+            <div class="modal-actions">
+              <button type="button" (click)="guardarFaena()" [disabled]="compraLoading()">Guardar faena</button>
+              <button type="button" class="secondary" (click)="faenaModalOpen = false" [disabled]="compraLoading()">Cancelar</button>
+            </div>
+          </section>
+        </div>
+      </section>
+    </ng-container>
+</section>

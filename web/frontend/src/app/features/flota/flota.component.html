@@ -1,0 +1,268 @@
+<section class="topbar">
+  <div>
+    <p class="eyebrow">Control de flota</p>
+    <h1>Vehiculos y gastos</h1>
+    <p class="subtitle">Seguimiento de combustible, mantenimientos y costo mensual por camion.</p>
+    <div class="status-row" *ngIf="flotaResumen()?.totales as totales">
+      <span>{{ flotaMonthRowLabel(totales.mes, totales.anho) }}</span>
+      <span>{{ (totales.vehiculos | fmtNumber) }} vehiculos</span>
+      <span>{{ (totales.litros | fmtNumber:2) }} L</span>
+      <span>{{ (totales.total_general | fmtMoney) }}</span>
+    </div>
+  </div>
+</section>
+
+<section class="flota-page">
+    <p *ngIf="flotaError()" class="alert">{{ flotaError() }}</p>
+    <p *ngIf="flotaOk()" class="success-alert">{{ flotaOk() }}</p>
+    <p *ngIf="flotaLoading()" class="muted">Cargando informacion de flota...</p>
+
+    <section class="panel flota-subnav-panel">
+      <div class="flota-subnav">
+        <button type="button" [class.active]="flotaSeccion === 'resumen'" (click)="cambiarFlotaSeccion('resumen')">Resumen</button>
+        <button type="button" *ngIf="canManageFlotaVehiculos()" [class.active]="flotaSeccion === 'vehiculos'" (click)="cambiarFlotaSeccion('vehiculos')">Vehiculos</button>
+        <button type="button" [class.active]="flotaSeccion === 'combustible'" (click)="cambiarFlotaSeccion('combustible')">Combustible</button>
+        <button type="button" [class.active]="flotaSeccion === 'gastos'" (click)="cambiarFlotaSeccion('gastos')">Gastos</button>
+      </div>
+    </section>
+
+    <ng-container *ngIf="flotaSeccion === 'resumen'">
+    <section class="insight-grid" *ngIf="flotaResumen()?.totales as totales">
+      <article class="insight-card">
+        <div>
+          <span>Combustible</span>
+          <strong>{{ (flotaTotalCombustible() | fmtMoney) }}</strong>
+        </div>
+        <p>{{ (flotaTotalLitros() | fmtNumber:2) }} litros en la semana.</p>
+      </article>
+      <article class="insight-card">
+        <div>
+          <span>Otros gastos</span>
+          <strong>{{ (flotaTotalOtros() | fmtMoney) }}</strong>
+        </div>
+        <p>Mantenimiento, cubiertas, peajes y otros.</p>
+      </article>
+      <article class="insight-card">
+        <div>
+          <span>Total semanal</span>
+          <strong>{{ (flotaTotalGeneral() | fmtMoney) }}</strong>
+        </div>
+        <p>{{ (totales.vehiculos | fmtNumber) }} vehiculos con movimiento.</p>
+      </article>
+    </section>
+
+    <section class="panel">
+      <div class="panel-title">
+        <h2>Filtros y resumen mensual</h2>
+        <span>{{ flotaMonthTitle() }}</span>
+      </div>
+      <div class="recepcion-toolbar flota-toolbar">
+        <div class="flota-week-nav">
+          <button type="button" class="secondary" (click)="shiftFlotaMonth(-1)" [disabled]="flotaLoading()">Mes anterior</button>
+          <div class="flota-week-badge">
+            <strong>{{ flotaMonthTitle() }}</strong>
+            <span>{{ flotaMonthSubtitle() }}</span>
+          </div>
+          <button type="button" class="secondary" (click)="shiftFlotaMonth(1)" [disabled]="flotaLoading()">Mes siguiente</button>
+        </div>
+        <label>
+          Fecha de referencia
+          <input
+            type="date"
+            name="flotaFechaReferencia"
+            [(ngModel)]="flotaFechaReferencia"
+            (ngModelChange)="actualizarFlotaMesDesdeFecha($event)">
+        </label>
+        <label>
+          Mes
+          <input type="number" min="1" max="12" name="flotaMes" [(ngModel)]="flotaMes">
+        </label>
+        <label>
+          Año
+          <input type="number" min="2024" step="1" name="flotaAnho" [(ngModel)]="flotaAnho">
+        </label>
+        <label>
+          Sucursal
+          <select name="flotaFiltroSucursal" [(ngModel)]="flotaFiltroSucursal" [disabled]="!!flotaSucursalBloqueada()">
+            <option *ngIf="!flotaSucursalBloqueada()" value="">Todas</option>
+            <option *ngFor="let sucursal of flotaCatalogos()?.sucursales ?? []" [value]="sucursal.slug">{{ sucursal.nombre }}</option>
+          </select>
+        </label>
+        <label>
+          Vehiculo resumen
+          <select name="flotaResumenVehiculoId" [(ngModel)]="flotaResumenVehiculoId">
+            <option [ngValue]="null">Todos</option>
+            <option *ngFor="let vehiculo of flotaVehiculosVisibles()" [ngValue]="vehiculo.id">{{ vehiculoDisplayLabel(vehiculo) }}</option>
+          </select>
+        </label>
+        <button type="button" (click)="cargarFlotaResumen()" [disabled]="flotaLoading()">Actualizar resumen</button>
+        <button type="button" class="secondary" (click)="descargarFlotaResumenPdf()" [disabled]="flotaLoading()">Generar PDF</button>
+        <button type="button" class="secondary" (click)="cargarFlota()" [disabled]="flotaLoading()">Recargar todo</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-title">
+        <h2>Resumen mensual por vehiculo</h2>
+        <span>{{ flotaResumen()?.items?.length ?? 0 }} filas</span>
+      </div>
+      <div class="table-wrap">
+        <table class="compact-table">
+          <thead>
+            <tr>
+              <th>Vehiculo</th>
+              <th>Sucursal</th>
+              <th>Litros</th>
+              <th>Combustible</th>
+              <th>Otros gastos</th>
+              <th>Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let row of flotaResumen()?.items ?? []">
+              <td>{{ vehiculoDisplayLabel(row) }}</td>
+              <td>{{ vehiculoSucursalLabel(row.sucursal) }}</td>
+              <td>{{ (row.litros | fmtNumber:2) }}</td>
+              <td>{{ (row.combustible_total | fmtMoney) }}</td>
+              <td>{{ (row.otros_gastos | fmtMoney) }}</td>
+              <td><strong>{{ (row.total_general | fmtMoney) }}</strong></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel-grid flota-history-grid">
+      <section class="panel">
+        <div class="panel-title">
+          <h2>Ranking de costo</h2>
+          <span>Top 5 vehiculos</span>
+        </div>
+        <div class="table-wrap">
+          <table class="compact-table">
+            <thead>
+              <tr>
+                <th>Vehiculo</th>
+                <th>Sucursal</th>
+                <th>Total</th>
+                <th>Costo/km</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let row of flotaResumen()?.rankingCosto ?? []">
+                <td>{{ vehiculoDisplayLabel(row) }}</td>
+                <td>{{ vehiculoSucursalLabel(row.sucursal) }}</td>
+                <td>{{ (row.total_general | fmtMoney) }}</td>
+                <td>{{ row.costo_por_km ? (row.costo_por_km | fmtMoney) : '-' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel" *ngIf="canManageFlotaVehiculos()">
+        <div class="panel-title">
+          <h2>Total por sucursal</h2>
+          <span>{{ flotaResumen()?.totalesPorSucursal?.length ?? 0 }} sucursales</span>
+        </div>
+        <div class="table-wrap">
+          <table class="compact-table">
+            <thead>
+              <tr>
+                <th>Sucursal</th>
+                <th>Vehiculos</th>
+                <th>Litros</th>
+                <th>Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let row of flotaResumen()?.totalesPorSucursal ?? []">
+                <td>{{ vehiculoSucursalLabel(row.sucursal) }}</td>
+                <td>{{ (row.vehiculos | fmtNumber) }}</td>
+                <td>{{ (row.litros | fmtNumber:2) }}</td>
+                <td>{{ (row.total_general | fmtMoney) }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </section>
+
+    <section class="panel-grid flota-history-grid">
+      <section class="panel">
+        <div class="panel-title">
+          <h2>Comparacion por meses</h2>
+          <span>Ultimos 4 meses</span>
+        </div>
+        <div class="table-wrap">
+          <table class="compact-table">
+            <thead>
+              <tr>
+                <th>Mes</th>
+                <th>Vehiculos</th>
+                <th>Combustible</th>
+                <th>Otros</th>
+                <th>Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let row of flotaResumen()?.comparativoMeses ?? []">
+                <td>{{ flotaMonthRowLabel(row.mes, row.anho) }}</td>
+                <td>{{ (row.vehiculos | fmtNumber) }}</td>
+                <td>{{ (row.combustible_total | fmtMoney) }}</td>
+                <td>{{ (row.otros_gastos | fmtMoney) }}</td>
+                <td>{{ (row.total_general | fmtMoney) }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-title">
+          <h2>Grafico simple por vehiculo</h2>
+          <span>Barras por costo total</span>
+        </div>
+        <div class="bars accent">
+          <div class="bar-row" *ngFor="let row of flotaResumen()?.items ?? []">
+            <div class="bar-label">
+              <strong>{{ vehiculoDisplayLabel(row) }}</strong>
+              <span>{{ (row.total_general | fmtMoney) }}<ng-container *ngIf="row.costo_por_km"> · {{ (row.costo_por_km | fmtMoney) }}/km</ng-container></span>
+            </div>
+            <div class="bar-track">
+              <div class="bar-fill" [style.width]="barWidthValue(row.total_general, flotaMaxVehiculoTotal())"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </section>
+    </ng-container>
+
+    <app-vehiculos-panel
+      *ngIf="flotaSeccion === 'vehiculos' && canManageFlotaVehiculos()"
+      [catalogos]="flotaCatalogos()"
+      [vehiculos]="flotaVehiculosVisibles()"
+      [sucursalBloqueada]="flotaSucursalBloqueada()"
+      [canManageProviders]="canManageFlotaProviders()"
+      [parentLoading]="flotaLoading()"
+      (saved)="cargarFlota()">
+    </app-vehiculos-panel>
+
+    <app-combustible-panel
+      *ngIf="flotaSeccion === 'combustible'"
+      [vehiculos]="flotaVehiculosActivos()"
+      [proveedores]="flotaProveedoresCombustible()"
+      [sucursal]="flotaFiltroSucursal || null"
+      [canImport]="canImportFlotaCombustible()"
+      (saved)="cargarFlota()">
+    </app-combustible-panel>
+
+    <app-gastos-panel
+      *ngIf="flotaSeccion === 'gastos'"
+      [vehiculos]="flotaVehiculosActivos()"
+      [proveedores]="flotaProveedoresActivos()"
+      [tiposGasto]="flotaTiposGastoActivos()"
+      [sucursal]="flotaFiltroSucursal || null"
+      (saved)="cargarFlota()">
+    </app-gastos-panel>
+</section>

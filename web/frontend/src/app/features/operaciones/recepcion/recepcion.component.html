@@ -1,0 +1,170 @@
+<section class="topbar">
+  <div>
+    <p class="eyebrow">Operaciones</p>
+    <h1>Recepcion</h1>
+    <p class="subtitle">Control de kg recibidos y menudencias por sucursal.</p>
+  </div>
+</section>
+
+<section class="operation-page">
+    <p *ngIf="recepcionError()" class="alert">{{ recepcionError() }}</p>
+    <p *ngIf="recepcionOk()" class="success-alert">{{ recepcionOk() }}</p>
+    <p *ngIf="recepcionLoading()" class="muted">Guardando o cargando recepcion...</p>
+
+    <section class="panel recepcion-panel">
+      <div class="panel-title">
+        <h2>Recepcion {{ recepcion()?.sucursal || '' }}</h2>
+        <span>Distribuciones recientes y menudencias</span>
+      </div>
+
+      <div class="recepcion-toolbar">
+        <label>
+          Sucursal
+          <select
+            name="recepcionSucursal"
+            [(ngModel)]="recepcionSucursal"
+            (change)="cambiarSucursalRecepcion()"
+            [disabled]="!!recepcionSucursalBloqueada()"
+          >
+            <option *ngFor="let sucursal of sucursalesRecepcion" [ngValue]="sucursal.slug">{{ sucursal.nombre }}</option>
+          </select>
+        </label>
+        <label>
+          Fecha de menudencias
+          <input type="date" name="recepcionFecha" [(ngModel)]="recepcionFecha" (change)="cargarRecepcion()">
+        </label>
+        <label>
+          Buscar distribucion
+          <input type="search" name="recepcionBusqueda" [(ngModel)]="recepcionBusqueda" placeholder="Lote, feria o nota">
+        </label>
+        <button type="button" class="secondary" (click)="abrirReporteRecepcionPdf()" [disabled]="recepcionLoading() || !recepcion()">
+          Abrir reporte PDF
+        </button>
+        <button type="button" (click)="cargarRecepcion()" [disabled]="recepcionLoading()">Recargar</button>
+      </div>
+
+      <ng-container *ngIf="recepcion() as rec">
+        <div class="recepcion-grid">
+          <article class="subpanel">
+            <div class="panel-title tight">
+              <h2>Distribuciones {{ rec.sucursal }}</h2>
+              <span>{{ distribucionesFiltradas().length }} registros</span>
+            </div>
+            <div class="table-wrap">
+              <table class="recepcion-table">
+                <thead>
+                  <tr>
+                    <th>Fecha</th>
+                    <th>Lote</th>
+                    <th>Origen</th>
+                    <th>Kg</th>
+                    <th>Reces</th>
+                    <th>Dif. kg</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    *ngFor="let row of distribucionesFiltradas()"
+                    [class.selected]="row.id === seleccionadoId"
+                    (click)="seleccionarDistribucion(row)"
+                  >
+                    <td>{{ row.fecha }}</td>
+                    <td>{{ row.lote }}</td>
+                    <td>{{ row.origen }}</td>
+                    <td>{{ (row.kg | fmtNumber:2) }}</td>
+                    <td>{{ (row.cabezas | fmtNumber) }}</td>
+                    <td>{{ (row.diferencia_kg | fmtNumber:2) }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </article>
+
+          <article class="subpanel edit-panel">
+            <div class="panel-title tight">
+              <h2>Editar kg recibido</h2>
+              <span>Solo {{ rec.sucursal }}</span>
+            </div>
+            <div class="form-grid">
+              <label>
+                KG recibido
+                <input #recepcionKgInput type="number" min="0" step="0.01" name="recepcionKg" [(ngModel)]="recepcionKg">
+              </label>
+              <label>
+                Registrado por
+                <input type="text" name="recepcionRegistradoPor" [(ngModel)]="recepcionRegistradoPor">
+              </label>
+              <label>
+                Faltante kg
+                <input type="number" min="0" step="0.01" name="recepcionFaltante" [(ngModel)]="recepcionFaltante">
+              </label>
+              <label>
+                Sobrante kg
+                <input type="number" min="0" step="0.01" name="recepcionSobrante" [(ngModel)]="recepcionSobrante">
+              </label>
+            </div>
+            <label class="note-field">
+              Nota
+              <textarea name="recepcionNota" rows="5" [(ngModel)]="recepcionNota"></textarea>
+            </label>
+            <button type="button" (click)="guardarRecepcionKg()" [disabled]="recepcionLoading() || !seleccionadoId">
+              Actualizar kg
+            </button>
+          </article>
+        </div>
+
+        <section class="subpanel menudencias-editor">
+          <div class="panel-title tight">
+            <h2>Menudencias del dia</h2>
+            <span>{{ rec.fecha }}</span>
+          </div>
+          <form class="menudencia-form" (ngSubmit)="agregarMenudencia()">
+            <label>
+              Producto
+              <input type="text" name="nuevoProducto" [(ngModel)]="nuevoProducto" required>
+            </label>
+            <label>
+              Kg
+              <input type="number" min="0" step="0.01" name="nuevoKg" [(ngModel)]="nuevoKg">
+            </label>
+            <label>
+              Unidades
+              <input type="number" min="0" step="1" name="nuevoUnidades" [(ngModel)]="nuevoUnidades">
+            </label>
+            <button type="submit" [disabled]="recepcionLoading()">Agregar</button>
+            <label>
+              Buscar
+              <input type="search" name="menuBusqueda" [(ngModel)]="menuBusqueda" placeholder="Producto">
+            </label>
+          </form>
+
+          <div class="table-wrap">
+            <table class="recepcion-table">
+              <thead>
+                <tr>
+                  <th>Producto</th>
+                  <th>Kg</th>
+                  <th>Unidades</th>
+                  <th *ngIf="canEditMenudencias()">Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr *ngFor="let row of menudenciasFiltradas()">
+                  <td><input type="text" [(ngModel)]="row.producto" [name]="'producto_' + row.id"></td>
+                  <td><input type="number" min="0" step="0.01" [(ngModel)]="row.kg" [name]="'kg_' + row.id"></td>
+                  <td><input type="number" min="0" step="1" [(ngModel)]="row.unidades" [name]="'unidades_' + row.id"></td>
+                  <td class="actions-cell" *ngIf="canEditMenudencias()">
+                    <button type="button" class="secondary" (click)="actualizarMenudencia(row)" [disabled]="recepcionLoading()">Guardar</button>
+                    <button type="button" class="danger" (click)="eliminarMenudencia(row)" [disabled]="recepcionLoading()">Eliminar</button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="distribution-form-actions" style="margin-top: 1rem;">
+            <button type="button" (click)="guardarTodasMenudencias()" [disabled]="recepcionLoading()">Guardar todo</button>
+          </div>
+        </section>
+      </ng-container>
+    </section>
+</section>

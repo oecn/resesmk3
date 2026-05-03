@@ -1,0 +1,170 @@
+<p *ngIf="error()" class="alert">{{ error() }}</p>
+<p *ngIf="ok()" class="success-alert">{{ ok() }}</p>
+
+<section class="panel-grid flota-admin-grid">
+  <section class="panel">
+    <div class="panel-title">
+      <h2>{{ vehiculoEditId ? 'Editar vehiculo' : 'Nuevo vehiculo' }}</h2>
+      <span>{{ vehiculos.length }} cargados</span>
+    </div>
+    <form class="form-grid" (ngSubmit)="crearVehiculoFlota()">
+      <label>
+        Codigo
+        <input type="text" name="vehiculoCodigo" [(ngModel)]="vehiculoCodigo" placeholder="Opcional por ahora">
+      </label>
+      <label>
+        Chapa
+        <input type="text" name="vehiculoChapa" [(ngModel)]="vehiculoChapa" placeholder="Opcional por ahora">
+      </label>
+      <label>
+        Nombre
+        <input type="text" name="vehiculoNombre" [(ngModel)]="vehiculoNombre" placeholder="Opcional por ahora">
+      </label>
+      <label>
+        Sucursal
+        <select name="vehiculoSucursal" [(ngModel)]="vehiculoSucursal" [disabled]="!!sucursalBloqueada">
+          <option *ngFor="let sucursal of catalogos?.sucursales ?? []" [value]="sucursal.slug">{{ sucursal.nombre }}</option>
+        </select>
+      </label>
+      <label>
+        Marca
+        <input type="text" name="vehiculoMarca" [(ngModel)]="vehiculoMarca">
+      </label>
+      <label>
+        Modelo
+        <input type="text" name="vehiculoModelo" [(ngModel)]="vehiculoModelo">
+      </label>
+      <label>
+        Anho
+        <input type="number" min="1990" step="1" name="vehiculoAnho" [(ngModel)]="vehiculoAnho">
+      </label>
+      <label>
+        Tipo
+        <select name="vehiculoTipo" [(ngModel)]="vehiculoTipo">
+          <option value="">Sin tipo</option>
+          <option *ngFor="let tipo of tiposVehiculo" [value]="tipo">{{ tipo }}</option>
+        </select>
+      </label>
+      <label>
+        Chofer
+        <input type="text" name="vehiculoChofer" [(ngModel)]="vehiculoChofer">
+      </label>
+      <label class="checkbox-field">
+        <input type="checkbox" name="vehiculoActivo" [(ngModel)]="vehiculoActivo">
+        <span>Vehiculo activo</span>
+      </label>
+      <div class="inline-actions full-span">
+        <button type="submit" [disabled]="busy">{{ vehiculoEditId ? 'Guardar cambios' : 'Guardar vehiculo' }}</button>
+        <button type="button" class="secondary" *ngIf="vehiculoEditId" (click)="cancelarEdicionVehiculo()" [disabled]="busy">Cancelar</button>
+      </div>
+    </form>
+  </section>
+
+  <section class="panel" *ngIf="canManageProviders">
+    <div class="panel-title">
+      <h2>Nuevo proveedor</h2>
+      <span>{{ catalogos?.proveedores?.length ?? 0 }} cargados</span>
+    </div>
+    <form class="form-grid" (ngSubmit)="crearProveedorFlota()">
+      <label>
+        Nombre
+        <input type="text" name="proveedorNombre" [(ngModel)]="proveedorNombre" required>
+      </label>
+      <label>
+        Tipo
+        <select name="proveedorTipo" [(ngModel)]="proveedorTipo">
+          <option value="combustible">combustible</option>
+          <option value="taller">taller</option>
+          <option value="otros">otros</option>
+        </select>
+      </label>
+      <label>
+        RUC
+        <input type="text" name="proveedorRuc" [(ngModel)]="proveedorRuc">
+      </label>
+      <label>
+        Telefono
+        <input type="text" name="proveedorTelefono" [(ngModel)]="proveedorTelefono">
+      </label>
+      <label class="checkbox-field">
+        <input type="checkbox" name="proveedorActivo" [(ngModel)]="proveedorActivo">
+        <span>Proveedor activo</span>
+      </label>
+      <button type="submit" [disabled]="busy">Guardar proveedor</button>
+    </form>
+  </section>
+</section>
+
+<section class="panel">
+  <div class="panel-title">
+    <h2>Vehiculos cargados</h2>
+    <span>{{ vehiculos.length }} registros</span>
+  </div>
+  <div class="table-wrap" *ngFor="let sucursal of catalogos?.sucursales ?? []">
+    <div class="panel-title">
+      <h3>{{ sucursal.nombre }}</h3>
+      <span>{{ vehiculosFlotaPorSucursal(sucursal.slug).length }} vehiculos</span>
+    </div>
+    <table class="compact-table" *ngIf="vehiculosFlotaPorSucursal(sucursal.slug).length; else emptySucursalVehicles">
+      <thead>
+        <tr>
+          <th>Vehiculo</th>
+          <th>Chapa</th>
+          <th>Marca</th>
+          <th>Modelo</th>
+          <th>Tipo</th>
+          <th>Chofer</th>
+          <th>Activo</th>
+          <th>Accion</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let vehiculo of vehiculosFlotaPorSucursal(sucursal.slug)">
+          <td>{{ vehiculoDisplayLabel(vehiculo) }}</td>
+          <td>{{ vehiculo.chapa || '-' }}</td>
+          <td>{{ vehiculo.marca || '-' }}</td>
+          <td>{{ vehiculo.modelo || '-' }}</td>
+          <td>{{ vehiculo.tipo || '-' }}</td>
+          <td>{{ vehiculo.chofer || '-' }}</td>
+          <td>{{ vehiculo.activo ? 'Si' : 'No' }}</td>
+          <td><button type="button" class="secondary" (click)="editarVehiculoFlota(vehiculo)">Editar</button></td>
+        </tr>
+      </tbody>
+    </table>
+    <ng-template #emptySucursalVehicles>
+      <p class="muted">Sin vehiculos en esta sucursal.</p>
+    </ng-template>
+  </div>
+  <div class="table-wrap" *ngIf="vehiculosFlotaSinSucursal().length">
+    <div class="panel-title">
+      <h3>Sin sucursal</h3>
+      <span>{{ vehiculosFlotaSinSucursal().length }} vehiculos</span>
+    </div>
+    <table class="compact-table">
+      <thead>
+        <tr>
+          <th>Vehiculo</th>
+          <th>Chapa</th>
+          <th>Marca</th>
+          <th>Modelo</th>
+          <th>Tipo</th>
+          <th>Chofer</th>
+          <th>Activo</th>
+          <th>Accion</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let vehiculo of vehiculosFlotaSinSucursal()">
+          <td>{{ vehiculoDisplayLabel(vehiculo) }}</td>
+          <td>{{ vehiculo.chapa || '-' }}</td>
+          <td>{{ vehiculo.marca || '-' }}</td>
+          <td>{{ vehiculo.modelo || '-' }}</td>
+          <td>{{ vehiculo.tipo || '-' }}</td>
+          <td>{{ vehiculo.chofer || '-' }}</td>
+          <td>{{ vehiculo.activo ? 'Si' : 'No' }}</td>
+          <td><button type="button" class="secondary" (click)="editarVehiculoFlota(vehiculo)">Editar</button></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>

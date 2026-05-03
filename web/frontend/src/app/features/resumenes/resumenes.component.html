@@ -1,0 +1,174 @@
+<section class="topbar">
+  <div>
+    <p class="eyebrow">Analisis</p>
+    <h1>Resumenes</h1>
+    <p class="subtitle">Revision de lotes, costos, rendimiento y cierre operativo.</p>
+  </div>
+</section>
+
+<section class="resumenes-page">
+  <p *ngIf="error()" class="alert">{{ error() }}</p>
+    <p *ngIf="resumenLoading()" class="muted">Cargando resumenes...</p>
+
+    <ng-container *ngIf="resumenes() as resumen">
+      <section class="panel resumenes-panel">
+        <div class="panel-title">
+          <h2>Resumenes</h2>
+          <span>{{ resumenLotesFiltrados().length }} de {{ resumen.lotes.length }} lotes</span>
+        </div>
+
+        <div class="recepcion-toolbar">
+          <label>
+            Filtro
+            <select name="resumenFiltro" [(ngModel)]="resumenFiltro">
+              <option>Todos</option>
+              <option>Pendientes</option>
+              <option>Completados</option>
+            </select>
+          </label>
+          <label>
+            Empresa
+            <select name="resumenEmpresa" [(ngModel)]="resumenEmpresa">
+              <option>Todas</option>
+              <option *ngFor="let empresa of resumen.empresas" [ngValue]="empresa">{{ empresa }}</option>
+            </select>
+          </label>
+          <label>
+            Desde
+            <input type="date" name="resumenDesde" [(ngModel)]="resumenDesde">
+          </label>
+          <label>
+            Hasta
+            <input type="date" name="resumenHasta" [(ngModel)]="resumenHasta">
+          </label>
+          <label>
+            Buscar
+            <input type="search" name="resumenBusqueda" [(ngModel)]="resumenBusqueda" placeholder="Lote, empresa o fecha">
+          </label>
+          <label>
+            Max. filas
+            <input type="number" min="1" step="1" name="resumenMaxFilas" [(ngModel)]="resumenMaxFilas">
+          </label>
+          <button type="button" (click)="cargarResumenes()" [disabled]="resumenLoading()">Aplicar</button>
+          <button type="button" class="secondary" (click)="marcarResumenesComoCerrados()" [disabled]="resumenLoading() || resumenSeleccionados.size === 0">Marcar como cerrado</button>
+          <button type="button" class="secondary" (click)="descargarResumenesPdf()" [disabled]="resumenLoading() || resumenSeleccionados.size === 0">Generar PDF</button>
+        </div>
+
+        <section class="insight-grid">
+          <article class="insight-card">
+            <div>
+              <span>Promedio Costo/kg</span>
+              <strong>{{ resumenCostoKgPromedio() ? (resumenCostoKgPromedio() | fmtMoney) : '-' }}</strong>
+            </div>
+          </article>
+          <article class="insight-card">
+            <div>
+              <span>Lotes seleccionados</span>
+              <strong>{{ (resumenSeleccionados.size | fmtNumber) }}</strong>
+            </div>
+          </article>
+          <article class="insight-card">
+            <div>
+              <span>Reces seleccionadas</span>
+              <strong>{{ (resumenSeleccionTotal().cabezas | fmtNumber) }}</strong>
+            </div>
+          </article>
+        </section>
+
+        <section class="subpanel resumen-selected-panel">
+          <fieldset>
+            <legend>Resumen por sucursal (seleccionados)</legend>
+            <div class="selected-summary-line">
+              <strong>Lotes seleccionados: {{ (resumenSeleccionados.size | fmtNumber) }}</strong>
+              <span>|</span>
+              <strong>Kg total: {{ (resumenSeleccionTotal().kg | fmtNumber:2) }}</strong>
+              <span>|</span>
+              <strong>Dif. Kg total: {{ (resumenSeleccionTotal().dif_kg | fmtNumber:2) }}</strong>
+              <span>|</span>
+              <strong>Reces: {{ (resumenSeleccionTotal().cabezas | fmtNumber) }}</strong>
+            </div>
+            <div class="table-wrap">
+              <table class="compact-table selected-summary-table">
+                <thead>
+                  <tr>
+                    <th>Sucursal</th>
+                    <th>Reces</th>
+                    <th>Kg</th>
+                    <th>Dif. Kg</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr *ngFor="let row of resumen.resumenSucursales">
+                    <td>{{ row.local }}</td>
+                    <td>{{ (row.cabezas | fmtNumber) }}</td>
+                    <td>{{ (row.kg | fmtNumber:2) }}</td>
+                    <td>{{ (row.dif_kg | fmtNumber:2) }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </fieldset>
+        </section>
+
+        <div class="table-wrap">
+          <table class="recepcion-table compare-table resumen-table">
+            <thead>
+              <tr>
+                <th>Sel.</th>
+                <th>ID</th>
+                <th>Lote</th>
+                <th>Empresa</th>
+                <th>Fecha</th>
+                <th>Cpra.</th>
+                <th>Faen.</th>
+                <th>Dist.</th>
+                <th>Kg</th>
+                <th>Monto</th>
+                <th>Costo</th>
+                <th>D%</th>
+                <th>R%</th>
+                <th>KgC.</th>
+                <th>Rnd.</th>
+                <th>Cerr.</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                *ngFor="let lote of resumenLotesFiltrados()"
+                [class.selected]="resumenSeleccionados.has(lote.id)"
+                [ngClass]="resumenLoteClass(lote)"
+                (click)="toggleResumenSeleccion(lote)"
+              >
+                <td class="resumen-select-cell">
+                  <span class="resumen-select-indicator" [class.is-active]="resumenSeleccionados.has(lote.id)"></span>
+                </td>
+                <td>{{ lote.id }}</td>
+                <td>{{ lote.lote }}</td>
+                <td>{{ lote.empresa }}</td>
+                <td>{{ lote.fecha }}</td>
+                <td>{{ (lote.cantcompra | fmtNumber) }}</td>
+                <td>{{ (lote.faenado | fmtNumber) }}</td>
+                <td>{{ (lote.distribuido | fmtNumber) }}</td>
+                <td>{{ (lote.kg | fmtNumber:2) }}</td>
+                <td>{{ (lote.monto | fmtMoney) }}</td>
+                <td>{{ (lote.costokg | fmtMoney) }}</td>
+                <td>{{ (lote.pct_distribuido | fmtNumber:0) }}</td>
+                <td>{{ (lote.pct_restante | fmtNumber:0) }}</td>
+                <td>{{ (lote.kgcompra | fmtNumber:2) }}</td>
+                <td>{{ (lote.rend_pct | fmtNumber:0) }}</td>
+                <td class="resumen-cierre-cell">
+                  <label class="resumen-lock-toggle" [class.is-closed]="lote.cerrado" (click)="$event.stopPropagation()">
+                    <input type="checkbox" [checked]="lote.cerrado" (change)="toggleResumenCerrado(lote, $event)">
+                    <span class="lock-pill" [attr.aria-label]="lote.cerrado ? 'Lote cerrado' : 'Lote abierto'">
+                      <span class="lock-icon">{{ lote.cerrado ? '🔒' : '🔓' }}</span>
+                    </span>
+                  </label>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+      </section>
+    </ng-container>
+</section>

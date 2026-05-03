@@ -4,6 +4,7 @@ import base64
 import csv
 import difflib
 import json
+import logging
 import unicodedata
 from html import escape
 from io import BytesIO, StringIO
@@ -153,7 +154,7 @@ def _parse_bool(value, default=False):
     if isinstance(value, bool):
         return value
     text = str(value).strip().lower()
-    if text in {"1", "true", "t", "si", "sÃ­", "y", "yes"}:
+    if text in {"1", "true", "t", "si", "sí", "y", "yes"}:
         return True
     if text in {"0", "false", "f", "no", "n"}:
         return False
@@ -3877,6 +3878,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             except AuthError as exc:
                 self._send_json({"error": str(exc)}, status=401)
             except Exception as exc:
+                logging.exception("Error no manejado en ruta de modulo %s %s", method, parsed.path)
                 self._send_json({"error": str(exc)}, status=500)
             return True
 
@@ -3949,12 +3951,23 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
 def main():
     server = ThreadingHTTPServer((HOST, PORT), DashboardHandler)
-    print(f"Dashboard API read-only en http://{HOST}:{PORT}")
-    print("Endpoints: /api/health, /api/auth/login, /api/auth/logout, /api/auth/me, /api/dashboard?desde=YYYY-MM-DD&hasta=YYYY-MM-DD")
-    print("Flota: /api/flota/catalogos, /api/flota/vehiculos, /api/flota/proveedores, /api/flota/combustible, /api/flota/combustible/import, /api/flota/gastos, /api/flota/resumen-semanal")
+    module_summary: dict[str, dict[str, Any]] = {}
+    for route in DashboardHandler.module_routes:
+        parts = route.path.strip("/").split("/")
+        module_name = parts[1] if len(parts) > 1 else route.path
+        summary = module_summary.setdefault(module_name, {"count": 0, "methods": set()})
+        summary["count"] += 1
+        summary["methods"].add(route.method)
+    module_text = ", ".join(
+        f"{name} ({'/'.join(sorted(summary['methods']))}: {summary['count']} rutas)"
+        for name, summary in sorted(module_summary.items())
+    )
+    print(f"Dashboard API en http://{HOST}:{PORT}")
+    print("Core: /api/health, /api/auth/login, /api/auth/logout, /api/auth/me, /api/auth/users")
+    print("Legacy: /api/dashboard, /api/compras-faena, /api/distribuciones, /api/recepcion, /api/flota/*")
+    print(f"Modulos auto-registrados: {module_text or 'ninguno'}")
     server.serve_forever()
 
 
 if __name__ == "__main__":
     main()
-
