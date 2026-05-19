@@ -3,16 +3,17 @@ import { Component, OnInit, computed, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { AcuerdoComercial, AcuerdoHistorial, AcuerdoUbicacion, ProveedorComercial } from './acuerdos-comerciales.models';
 import { AcuerdosComercialesService } from './acuerdos-comerciales.service';
+import { CobranzasPanelComponent } from './components/cobranzas-panel/cobranzas-panel.component';
 
 @Component({
   selector: 'app-acuerdos-comerciales',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, CobranzasPanelComponent],
   templateUrl: './acuerdos-comerciales.component.html',
   styleUrl: './acuerdos-comerciales.component.css',
 })
 export class AcuerdosComercialesComponent implements OnInit {
-  activeTab: 'nuevo' | 'cargados' | 'proveedores' | 'historial-proveedor' = 'cargados';
+  activeTab: 'nuevo' | 'cargados' | 'proveedores' | 'cobranzas' | 'historial-proveedor' | 'importar-ubicaciones' | 'mapa' = 'cargados';
   acuerdos = signal<AcuerdoComercial[]>([]);
   acuerdoDetalle = signal<AcuerdoComercial | null>(null);
   historialProveedor = signal<AcuerdoComercial[]>([]);
@@ -33,6 +34,8 @@ export class AcuerdosComercialesComponent implements OnInit {
   proveedorBaseTelefono = '';
   proveedorBaseEmail = '';
   proveedorBaseActivo = true;
+  mapaSucursal: 'aregua' | 'luque' | 'itaugua' = 'aregua';
+  mapaUbicacionDetalle = signal<any | null>(null);
   editId: number | null = null;
   proveedorId: number | null = null;
   proveedorNombre = '';
@@ -47,6 +50,7 @@ export class AcuerdosComercialesComponent implements OnInit {
   estadoRenovacion = 'vigente';
   acuerdoOrigenId: number | null = null;
   observaciones = '';
+  importUbicacionesTexto = '';
   activo = true;
   ubicaciones: AcuerdoUbicacion[] = [
     { sucursal: 'luque', tipo_espacio: 'puntera', ubicacion: '', detalle: '', orden: 1 },
@@ -71,8 +75,20 @@ export class AcuerdosComercialesComponent implements OnInit {
     { value: 'no_renovado', label: 'No renovado' },
     { value: 'vencido', label: 'Vencido' },
   ];
+  readonly mapaBloques = [
+    { key: 'A', label: 'Bloque A', className: 'block-a' },
+    { key: 'B', label: 'Bloque B', className: 'block-b' },
+    { key: 'C', label: 'Bloque C', className: 'block-c' },
+    { key: 'D', label: 'Bloque D', className: 'block-d' },
+  ];
   totalUbicaciones = computed(() => this.acuerdos().reduce((acc, item) => acc + (Number(item.ubicaciones_count) || 0), 0));
   totalPunteras = computed(() => this.acuerdos().reduce((acc, item) => acc + (Number(item.punteras_count) || 0), 0));
+  totalPestanas = computed(() =>
+    this.acuerdos().reduce(
+      (acc, item) => acc + item.ubicaciones.filter((ubicacion) => ubicacion.tipo_espacio === 'pestana').length,
+      0,
+    )
+  );
   proveedoresCount = computed(() => this.proveedores().length);
 
   constructor(private readonly acuerdosService: AcuerdosComercialesService) {}
@@ -83,7 +99,7 @@ export class AcuerdosComercialesComponent implements OnInit {
     this.cargarProveedores();
   }
 
-  cambiarTab(tab: 'nuevo' | 'cargados' | 'proveedores' | 'historial-proveedor'): void {
+  cambiarTab(tab: 'nuevo' | 'cargados' | 'proveedores' | 'cobranzas' | 'historial-proveedor' | 'importar-ubicaciones' | 'mapa'): void {
     this.activeTab = tab;
   }
 
@@ -349,6 +365,31 @@ export class AcuerdosComercialesComponent implements OnInit {
     });
   }
 
+  importarUbicacionesAregua(): void {
+    if (!this.importUbicacionesTexto.trim()) {
+      this.error.set('Pega la tabla de ubicaciones de Aregua.');
+      return;
+    }
+    this.loading.set(true);
+    this.error.set('');
+    this.ok.set('');
+    this.acuerdosService.importUbicacionesAregua(this.importUbicacionesTexto).subscribe({
+      next: (result) => {
+        this.ok.set(
+          `Importacion Aregua: ${result.leidas} leidas, ${result.creadas} creadas, ${result.actualizadas} actualizadas, ${result.acuerdos_creados} acuerdos creados.`
+        );
+        this.importUbicacionesTexto = '';
+        this.cargarAcuerdos();
+        this.cargarProveedores();
+        this.loading.set(false);
+      },
+      error: (err) => {
+        this.error.set(err?.error?.error ?? 'No se pudieron importar las ubicaciones.');
+        this.loading.set(false);
+      },
+    });
+  }
+
   agregarUbicacion(): void {
     this.ubicaciones = [
       ...this.ubicaciones,
@@ -366,6 +407,56 @@ export class AcuerdosComercialesComponent implements OnInit {
 
   trackByIndex(index: number): number {
     return index;
+  }
+
+  ubicacionesPorTipo(ubicaciones: AcuerdoUbicacion[]): Array<{ tipo: string; items: AcuerdoUbicacion[] }> {
+    const order = ['puntera', 'pestana', 'tramo_gondola', 'isla', 'espacio_gondola_frio'];
+    return order
+      .map((tipo) => ({
+        tipo,
+        items: (ubicaciones || []).filter((ubicacion) => ubicacion.tipo_espacio === tipo),
+      }))
+      .filter((group) => group.items.length > 0);
+  }
+
+  mapaUbicacionesPorBloque(bloque: string): Array<{ numero: number; puntera?: any; pestanas: any[] }> {
+    const ubicaciones = this.acuerdos()
+      .flatMap((acuerdo) => acuerdo.ubicaciones.map((ubicacion) => ({ ...ubicacion, proveedor_nombre: acuerdo.proveedor_nombre })))
+      .filter((ubicacion) => ubicacion.sucursal === this.mapaSucursal)
+      .filter((ubicacion) => (ubicacion.bloque || this.bloqueDesdeCodigo(ubicacion.codigo || ubicacion.ubicacion)) === bloque);
+    const numeros = Array.from({ length: 13 }, (_, index) => index + 1);
+    return numeros.map((numero) => {
+      const items = ubicaciones.filter((ubicacion) => Number(ubicacion.numero || this.numeroDesdeCodigo(ubicacion.codigo || ubicacion.ubicacion)) === numero);
+      return {
+        numero,
+        puntera: items.find((ubicacion) => ubicacion.tipo_espacio === 'puntera'),
+        pestanas: items.filter((ubicacion) => ubicacion.tipo_espacio === 'pestana'),
+      };
+    });
+  }
+
+  bloqueDesdeCodigo(value?: string | null): string {
+    const match = String(value || '').trim().match(/^([A-D])-/i);
+    return match ? match[1].toUpperCase() : '';
+  }
+
+  numeroDesdeCodigo(value?: string | null): number | null {
+    const match = String(value || '').trim().match(/^[A-D]-(\d+)/i);
+    return match ? Number(match[1]) : null;
+  }
+
+  verMapaUbicacion(ubicacion: any): void {
+    if (ubicacion) {
+      this.mapaUbicacionDetalle.set(ubicacion);
+    }
+  }
+
+  esUbicacionLibre(ubicacion: any): boolean {
+    return String(ubicacion?.proveedor_nombre || '').trim().toLowerCase() === 'libre';
+  }
+
+  cerrarMapaUbicacion(): void {
+    this.mapaUbicacionDetalle.set(null);
   }
 
   diasParaVencimiento(acuerdo: AcuerdoComercial): number | null {

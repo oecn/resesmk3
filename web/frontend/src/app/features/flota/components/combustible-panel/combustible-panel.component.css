@@ -1,1 +1,57 @@
+.flota-history-grid {
+  display: block;
+  width: min(100%, calc(100vw - 96px));
+}
 
+.combustible-history-panel {
+  width: 100%;
+}
+
+.combustible-history-panel .table-wrap {
+  max-height: 68vh;
+  overflow: auto;
+  outline: none;
+}
+
+.combustible-history-panel .table-wrap:focus {
+  box-shadow: 0 0 0 3px rgba(14, 116, 144, 0.18);
+}
+
+.combustible-history-panel .compact-table {
+  min-width: 1120px;
+}
+
+.combustible-history-panel th,
+.combustible-history-panel td {
+  white-space: nowrap;
+}
+
+.combustible-history-panel th:nth-child(3),
+.combustible-history-panel td:nth-child(3) {
+  min-width: 220px;
+}
+
+.combustible-history-panel th:nth-child(10),
+.combustible-history-panel td:nth-child(10) {
+  min-width: 150px;
+}
+
+.row-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.selectable-row {
+  cursor: pointer;
+}
+
+.selectable-row:hover {
+  background: #eef6ff;
+}
+
+.selected-row,
+.selected-row:hover {
+  background: #dbeafe;
+  box-shadow: inset 4px 0 0 #2563eb;
+}

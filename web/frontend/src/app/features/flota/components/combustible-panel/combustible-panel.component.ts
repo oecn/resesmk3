@@ -29,6 +29,7 @@ export class CombustiblePanelComponent implements OnInit, OnChanges {
   combustibleImportProveedorId: number | null = null;
   combustibleImportFile: File | null = null;
   combustibleImportFileName = '';
+  combustibleEditId: number | null = null;
   combustibleTipo = 'OPTIMO DIESEL';
   combustibleLitros = '';
   combustibleImporte = '';
@@ -41,6 +42,7 @@ export class CombustiblePanelComponent implements OnInit, OnChanges {
   flotaCombustible = signal<FlotaCombustibleRow[]>([]);
   flotaCombustibleImportPreview = signal<FlotaCombustibleImportPreviewRow[]>([]);
   flotaCombustibleImportPreviewSummary = signal<FlotaCombustibleImportPreviewResult | null>(null);
+  combustibleSelectedId: number | null = null;
   readonly tiposCombustible = ['SUPREMA 97', 'OPTIMO DIESEL', 'DIESEL MAX S10'];
 
   flotaCombustibleResumen = computed(() => {
@@ -84,6 +86,9 @@ export class CombustiblePanelComponent implements OnInit, OnChanges {
     }).subscribe({
       next: ({ items }) => {
         this.flotaCombustible.set(items);
+        if (this.combustibleSelectedId && !items.find((item) => item.id === this.combustibleSelectedId)) {
+          this.combustibleSelectedId = items[0]?.id ?? null;
+        }
         if (showLoading) {
           this.loading.set(false);
         }
@@ -122,6 +127,7 @@ export class CombustiblePanelComponent implements OnInit, OnChanges {
     this.error.set('');
     this.ok.set('');
     this.flotaService.saveFlotaCombustible({
+      id: this.combustibleEditId,
       fecha: this.combustibleFecha,
       vehiculo_id: this.combustibleVehiculoId,
       proveedor_id: this.combustibleProveedorId,
@@ -132,12 +138,9 @@ export class CombustiblePanelComponent implements OnInit, OnChanges {
       observacion: this.combustibleObservacion,
     }).subscribe({
       next: () => {
-        this.combustibleTipo = 'OPTIMO DIESEL';
-        this.combustibleLitros = '';
-        this.combustibleImporte = '';
-        this.combustibleFactura = '';
-        this.combustibleObservacion = '';
-        this.ok.set('Carga de combustible registrada.');
+        const editing = Boolean(this.combustibleEditId);
+        this.limpiarFormularioCombustible();
+        this.ok.set(editing ? 'Carga de combustible actualizada.' : 'Carga de combustible registrada.');
         this.loading.set(false);
         this.cargarFlotaCombustible(false);
         this.saved.emit();
@@ -147,6 +150,56 @@ export class CombustiblePanelComponent implements OnInit, OnChanges {
         this.loading.set(false);
       },
     });
+  }
+
+  editarCargaCombustible(row: FlotaCombustibleRow): void {
+    this.seleccionarCargaCombustible(row);
+    this.combustibleEditId = row.id;
+    this.combustibleFecha = row.fecha;
+    this.combustibleVehiculoId = row.vehiculo_id;
+    this.combustibleProveedorId = row.proveedor_id ?? null;
+    this.combustibleTipo = row.tipo_combustible || 'OPTIMO DIESEL';
+    this.combustibleLitros = String(row.litros ?? '');
+    this.combustibleImporte = String(row.importe ?? '');
+    this.combustibleFactura = row.nro_factura ?? '';
+    this.combustibleObservacion = row.observacion ?? '';
+    this.ok.set(`Editando carga #${row.id}.`);
+    this.error.set('');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  cancelarEdicionCombustible(): void {
+    this.limpiarFormularioCombustible();
+    this.ok.set('');
+    this.error.set('');
+  }
+
+  seleccionarCargaCombustible(row: FlotaCombustibleRow): void {
+    this.combustibleSelectedId = row.id;
+  }
+
+  moverSeleccionCombustible(offset: number): void {
+    const rows = this.flotaCombustible();
+    if (!rows.length) {
+      return;
+    }
+    const currentIndex = this.combustibleSelectedId
+      ? rows.findIndex((item) => item.id === this.combustibleSelectedId)
+      : -1;
+    const nextIndex = Math.min(Math.max(currentIndex + offset, 0), rows.length - 1);
+    this.combustibleSelectedId = rows[nextIndex].id;
+  }
+
+  onCombustibleHistoryKeydown(event: KeyboardEvent): void {
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      this.moverSeleccionCombustible(1);
+      return;
+    }
+    if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      this.moverSeleccionCombustible(-1);
+    }
   }
 
   eliminarCargaCombustible(row: FlotaCombustibleRow): void {
@@ -303,6 +356,15 @@ export class CombustiblePanelComponent implements OnInit, OnChanges {
     if (!this.combustibleProveedorId) {
       this.combustibleProveedorId = this.proveedores[0]?.id ?? null;
     }
+  }
+
+  private limpiarFormularioCombustible(): void {
+    this.combustibleEditId = null;
+    this.combustibleTipo = 'OPTIMO DIESEL';
+    this.combustibleLitros = '';
+    this.combustibleImporte = '';
+    this.combustibleFactura = '';
+    this.combustibleObservacion = '';
   }
 
   private readFileAsDataUrl(file: File): Promise<string> {

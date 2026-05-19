@@ -5,8 +5,8 @@
 <section class="panel-grid flota-mov-grid">
   <section class="panel">
     <div class="panel-title">
-      <h2>Carga de combustible</h2>
-      <span>Registro por evento</span>
+      <h2>{{ combustibleEditId ? 'Editar carga de combustible' : 'Carga de combustible' }}</h2>
+      <span>{{ combustibleEditId ? ('Carga #' + combustibleEditId) : 'Registro por evento' }}</span>
     </div>
     <div class="recepcion-toolbar flota-toolbar">
       <label>
@@ -167,18 +167,19 @@
         Observacion
         <textarea name="combustibleObservacion" [(ngModel)]="combustibleObservacion"></textarea>
       </label>
-      <button type="submit" [disabled]="loading()">Guardar carga</button>
+      <button type="submit" [disabled]="loading()">{{ combustibleEditId ? 'Guardar cambios' : 'Guardar carga' }}</button>
+      <button type="button" class="secondary" *ngIf="combustibleEditId" (click)="cancelarEdicionCombustible()" [disabled]="loading()">Cancelar edición</button>
     </form>
   </section>
 </section>
 
 <section class="panel-grid flota-history-grid">
-  <section class="panel">
+  <section class="panel combustible-history-panel">
     <div class="panel-title">
       <h2>Historico de cargas</h2>
       <span>{{ flotaCombustible().length }} registros</span>
     </div>
-    <div class="table-wrap">
+    <div class="table-wrap" tabindex="0" (keydown)="onCombustibleHistoryKeydown($event)" aria-label="Historico de cargas de combustible">
       <table class="compact-table">
         <thead>
           <tr>
@@ -191,11 +192,16 @@
             <th>Costo/litro</th>
             <th>Km</th>
             <th>Factura</th>
-            <th>Accion</th>
+            <th>Acciones</th>
           </tr>
         </thead>
         <tbody>
-          <tr *ngFor="let row of flotaCombustible()">
+          <tr
+            *ngFor="let row of flotaCombustible()"
+            class="selectable-row"
+            [class.selected-row]="combustibleSelectedId === row.id"
+            (click)="seleccionarCargaCombustible(row)"
+          >
             <td>{{ row.id }}</td>
             <td>{{ row.fecha }}</td>
             <td>{{ vehiculoMovLabel(row) }}</td>
@@ -205,7 +211,8 @@
             <td>{{ (row.precio_litro | fmtMoney) }}</td>
             <td>{{ row.km_actual ? (row.km_actual | fmtNumber:0) : '-' }}</td>
             <td>{{ row.nro_factura || '-' }}</td>
-            <td>
+            <td class="row-actions">
+              <button type="button" class="secondary mini-button" (click)="editarCargaCombustible(row)" [disabled]="loading()">Editar</button>
               <button type="button" class="danger mini-button" (click)="eliminarCargaCombustible(row)" [disabled]="loading()">Eliminar</button>
             </td>
           </tr>

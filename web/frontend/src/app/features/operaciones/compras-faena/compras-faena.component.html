@@ -63,12 +63,12 @@
                 <input type="number" min="1" step="1" name="compraCantidad" [(ngModel)]="compraCantidad" (ngModelChange)="maybeAutofillCompraLote()">
               </label>
               <label>
-                Monto Gs
-                <input type="number" min="0" step="1" name="compraMonto" [(ngModel)]="compraMonto">
-              </label>
-              <label>
                 Peso kg
                 <input type="number" min="0" step="0.01" name="compraPesoKg" [(ngModel)]="compraPesoKg">
+              </label>
+              <label>
+                Monto Gs
+                <input type="number" min="0" step="1" name="compraMonto" [(ngModel)]="compraMonto">
               </label>
               <div class="distribution-form-actions">
                 <button type="button" (click)="guardarCompraLote()" [disabled]="compraLoading()">Guardar lote</button>
@@ -249,8 +249,8 @@
               </label>
               <label>Fecha <input type="date" name="modalCompraFecha" [(ngModel)]="modalCompraFecha"></label>
               <label>Cantidad <input type="number" min="1" step="1" name="modalCompraCantidad" [(ngModel)]="modalCompraCantidad"></label>
-              <label>Monto Gs <input type="number" min="0" step="1" name="modalCompraMonto" [(ngModel)]="modalCompraMonto"></label>
               <label>Peso kg <input type="number" min="0" step="0.01" name="modalCompraPesoKg" [(ngModel)]="modalCompraPesoKg"></label>
+              <label>Monto Gs <input type="number" min="0" step="1" name="modalCompraMonto" [(ngModel)]="modalCompraMonto"></label>
             </div>
             <div class="modal-actions">
               <button type="button" (click)="guardarCompraEditada()" [disabled]="compraLoading()">Guardar cambios</button>

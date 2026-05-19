@@ -9,6 +9,7 @@ export type AppModuleKey =
   | 'usuarios'
   | 'flota'
   | 'archivos-directorio'
+  | 'contratos'
   | 'acuerdos-comerciales';
 
 export interface CurrentUser {

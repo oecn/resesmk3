@@ -1,0 +1,23 @@
+<section class="topbar" *ngIf="vista === 'usuarios'">
+  <div>
+    <p class="eyebrow">Administracion</p>
+    <h1>Usuarios</h1>
+    <p class="subtitle">Crear cuentas, asignar roles, activar usuarios y resetear passwords.</p>
+  </div>
+</section>
+
+<section class="topbar" *ngIf="vista === 'archivos-directorio'">
+  <div>
+    <p class="eyebrow">Directorio</p>
+    <h1>Archivos</h1>
+    <p class="subtitle">Consulta y descarga de archivos compartidos del sistema.</p>
+  </div>
+</section>
+
+<section class="topbar" *ngIf="vista === 'contratos'">
+  <div>
+    <p class="eyebrow">Gestion</p>
+    <h1>Contratos</h1>
+    <p class="subtitle">Registro de contratos, partes, montos y clausulas relevantes.</p>
+  </div>
+</section>

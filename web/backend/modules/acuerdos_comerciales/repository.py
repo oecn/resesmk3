@@ -1,8 +1,11 @@
 ﻿from __future__ import annotations
 
+import csv
 import json
+import re
 from datetime import date, datetime
 from decimal import Decimal
+from io import StringIO
 from typing import Any
 
 import psycopg2
@@ -166,11 +169,19 @@ class AcuerdosComercialesRepository:
                         sucursal TEXT NOT NULL,
                         tipo_espacio TEXT NOT NULL,
                         ubicacion TEXT NOT NULL,
+                        codigo TEXT NULL,
+                        bloque TEXT NULL,
+                        numero INTEGER NULL,
+                        valor_gs NUMERIC(14, 2) NULL,
                         detalle TEXT NULL,
                         orden INTEGER NOT NULL DEFAULT 1
                     )
                     """
                 )
+                cur.execute("ALTER TABLE acuerdos_ubicaciones ADD COLUMN IF NOT EXISTS codigo TEXT NULL")
+                cur.execute("ALTER TABLE acuerdos_ubicaciones ADD COLUMN IF NOT EXISTS bloque TEXT NULL")
+                cur.execute("ALTER TABLE acuerdos_ubicaciones ADD COLUMN IF NOT EXISTS numero INTEGER NULL")
+                cur.execute("ALTER TABLE acuerdos_ubicaciones ADD COLUMN IF NOT EXISTS valor_gs NUMERIC(14, 2) NULL")
                 cur.execute(
                     """
                     CREATE TABLE IF NOT EXISTS acuerdos_historial (
@@ -187,8 +198,52 @@ class AcuerdosComercialesRepository:
                 )
                 cur.execute(
                     """
+                    CREATE TABLE IF NOT EXISTS acuerdos_facturas (
+                        id SERIAL PRIMARY KEY,
+                        acuerdo_id INTEGER NOT NULL REFERENCES acuerdos_comerciales(id) ON DELETE CASCADE,
+                        periodo_anho INTEGER NOT NULL,
+                        periodo_mes INTEGER NOT NULL,
+                        numero_factura TEXT NOT NULL,
+                        monto_factura NUMERIC(14, 2) NOT NULL DEFAULT 0,
+                        fecha_factura DATE NULL,
+                        cobrado BOOLEAN NOT NULL DEFAULT FALSE,
+                        fecha_cobro DATE NULL,
+                        forma_cobro TEXT NULL,
+                        observaciones TEXT NULL,
+                        creado_en TIMESTAMP NOT NULL DEFAULT NOW(),
+                        actualizado_en TIMESTAMP NOT NULL DEFAULT NOW(),
+                        CONSTRAINT chk_acuerdos_facturas_periodo_mes CHECK (periodo_mes BETWEEN 1 AND 12),
+                        CONSTRAINT uq_acuerdos_facturas_periodo UNIQUE (acuerdo_id, periodo_anho, periodo_mes)
+                    )
+                    """
+                )
+                cur.execute("ALTER TABLE acuerdos_facturas ADD COLUMN IF NOT EXISTS forma_cobro TEXT NULL")
+                cur.execute(
+                    """
                     CREATE INDEX IF NOT EXISTS idx_acuerdos_historial_acuerdo
                     ON acuerdos_historial(acuerdo_id, creado_en DESC)
+                    """
+                )
+                cur.execute(
+                    """
+                    CREATE INDEX IF NOT EXISTS idx_acuerdos_facturas_periodo
+                    ON acuerdos_facturas(periodo_anho, periodo_mes)
+                    """
+                )
+                cur.execute(
+                    """
+                    CREATE INDEX IF NOT EXISTS idx_acuerdos_facturas_cobrado
+                    ON acuerdos_facturas(cobrado)
+                    """
+                )
+                cur.execute(
+                    """
+                    CREATE UNIQUE INDEX IF NOT EXISTS uq_acuerdos_ubicaciones_sucursal_codigo
+                    ON acuerdos_ubicaciones (
+                        sucursal,
+                        LOWER(BTRIM(COALESCE(codigo, '')))
+                    )
+                    WHERE COALESCE(BTRIM(codigo), '') <> ''
                     """
                 )
                 cur.execute(
@@ -202,6 +257,305 @@ class AcuerdosComercialesRepository:
                 )
             conn.commit()
         self._schema_ready = True
+
+    def list_acuerdos_cobranzas(self, mes, anho):
+        periodo_mes = _parse_int(mes)
+        periodo_anho = _parse_int(anho)
+        if periodo_mes < 1 or periodo_mes > 12:
+            raise ValueError("El mes debe estar entre 1 y 12.")
+        if periodo_anho < 2000 or periodo_anho > 2100:
+            raise ValueError("El anho del periodo no es valido.")
+        with self._connect(readonly=True) as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute(
+                    """
+                    SELECT a.id AS acuerdo_id,
+                           a.proveedor_id,
+                           p.nombre AS proveedor_nombre,
+                           p.ruc AS proveedor_ruc,
+                           a.titulo,
+                           a.retorno_porcentaje,
+                           a.vigencia_desde,
+                           a.vigencia_hasta,
+                           a.estado_renovacion,
+                           a.activo,
+                           f.id,
+                           f.periodo_anho,
+                           f.periodo_mes,
+                           f.numero_factura,
+                           f.monto_factura,
+                           f.fecha_factura,
+                           f.cobrado,
+                           f.fecha_cobro,
+                           f.forma_cobro,
+                           f.observaciones,
+                           f.actualizado_en
+                    FROM acuerdos_comerciales a
+                    JOIN acuerdos_proveedores p ON p.id = a.proveedor_id
+                    LEFT JOIN acuerdos_facturas f
+                      ON f.acuerdo_id = a.id
+                     AND f.periodo_anho = %s
+                     AND f.periodo_mes = %s
+                    WHERE a.activo = TRUE
+                      AND (
+                          a.vigencia_desde IS NULL
+                          OR a.vigencia_desde <= (MAKE_DATE(%s, %s, 1) + INTERVAL '1 month - 1 day')::date
+                      )
+                      AND (
+                          a.vigencia_hasta IS NULL
+                          OR a.vigencia_hasta >= MAKE_DATE(%s, %s, 1)
+                      )
+                    ORDER BY p.nombre ASC, a.titulo ASC, a.id ASC
+                    """,
+                    (periodo_anho, periodo_mes, periodo_anho, periodo_mes, periodo_anho, periodo_mes),
+                )
+                items = []
+                total_facturado = Decimal("0")
+                total_cobrado = Decimal("0")
+                pendientes = 0
+                cobradas = 0
+                for row in cur.fetchall():
+                    item = dict(row)
+                    item["periodo_anho"] = item.get("periodo_anho") or periodo_anho
+                    item["periodo_mes"] = item.get("periodo_mes") or periodo_mes
+                    item["numero_factura"] = item.get("numero_factura") or ""
+                    item["forma_cobro"] = item.get("forma_cobro") or ""
+                    item["monto_factura"] = item.get("monto_factura") or Decimal("0")
+                    item["cobrado"] = bool(item.get("cobrado") or False)
+                    amount = item["monto_factura"] if isinstance(item["monto_factura"], Decimal) else Decimal(str(item["monto_factura"] or 0))
+                    total_facturado += amount
+                    if item["cobrado"]:
+                        cobradas += 1
+                        total_cobrado += amount
+                    else:
+                        pendientes += 1
+                    items.append(item)
+                return {
+                    "periodo": {"mes": periodo_mes, "anho": periodo_anho},
+                    "totales": {
+                        "facturas": len(items),
+                        "cobradas": cobradas,
+                        "pendientes": pendientes,
+                        "total_facturado": total_facturado,
+                        "total_cobrado": total_cobrado,
+                        "total_pendiente": total_facturado - total_cobrado,
+                    },
+                    "items": items,
+                }
+
+    def list_acuerdos_cobranzas_anual(self, anho):
+        periodo_anho = _parse_int(anho)
+        if periodo_anho < 2000 or periodo_anho > 2100:
+            raise ValueError("El anho del periodo no es valido.")
+        with self._connect(readonly=True) as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute(
+                    """
+                    WITH meses AS (
+                        SELECT generate_series(1, 12)::int AS mes
+                    ),
+                    esperados AS (
+                        SELECT m.mes,
+                               a.id AS acuerdo_id,
+                               p.id AS proveedor_id,
+                               p.nombre AS proveedor_nombre,
+                               a.titulo
+                        FROM meses m
+                        JOIN acuerdos_comerciales a
+                          ON a.activo = TRUE
+                         AND (
+                            a.vigencia_desde IS NULL
+                            OR a.vigencia_desde <= (MAKE_DATE(%s, m.mes, 1) + INTERVAL '1 month - 1 day')::date
+                         )
+                         AND (
+                            a.vigencia_hasta IS NULL
+                            OR a.vigencia_hasta >= MAKE_DATE(%s, m.mes, 1)
+                         )
+                        JOIN acuerdos_proveedores p ON p.id = a.proveedor_id
+                    ),
+                    base AS (
+                        SELECT e.mes,
+                               e.acuerdo_id,
+                               e.proveedor_id,
+                               e.proveedor_nombre,
+                               e.titulo,
+                               COALESCE(f.monto_factura, 0) AS monto_factura,
+                               COALESCE(f.cobrado, FALSE) AS cobrado
+                        FROM esperados e
+                        LEFT JOIN acuerdos_facturas f
+                          ON f.acuerdo_id = e.acuerdo_id
+                         AND f.periodo_anho = %s
+                         AND f.periodo_mes = e.mes
+                    )
+                    SELECT mes,
+                           COUNT(*)::int AS facturas,
+                           COALESCE(SUM(CASE WHEN cobrado THEN 1 ELSE 0 END), 0)::int AS cobradas,
+                           COALESCE(SUM(CASE WHEN NOT cobrado THEN 1 ELSE 0 END), 0)::int AS pendientes,
+                           COALESCE(SUM(monto_factura), 0) AS total_facturado,
+                           COALESCE(SUM(CASE WHEN cobrado THEN monto_factura ELSE 0 END), 0) AS total_cobrado
+                    FROM base
+                    GROUP BY mes
+                    ORDER BY mes
+                    """,
+                    (periodo_anho, periodo_anho, periodo_anho),
+                )
+                meses = []
+                month_map = {int(row["mes"]): dict(row) for row in cur.fetchall()}
+                for mes in range(1, 13):
+                    row = month_map.get(mes) or {
+                        "mes": mes,
+                        "facturas": 0,
+                        "cobradas": 0,
+                        "pendientes": 0,
+                        "total_facturado": Decimal("0"),
+                        "total_cobrado": Decimal("0"),
+                    }
+                    facturas = int(row.get("facturas") or 0)
+                    cobradas = int(row.get("cobradas") or 0)
+                    total_facturado = Decimal(str(row.get("total_facturado") or 0))
+                    total_cobrado = Decimal(str(row.get("total_cobrado") or 0))
+                    row["porcentaje_facturas"] = round((cobradas / facturas) * 100, 2) if facturas else 0
+                    row["porcentaje_monto"] = round((total_cobrado / total_facturado) * 100, 2) if total_facturado else 0
+                    meses.append(row)
+
+                cur.execute(
+                    """
+                    WITH meses AS (
+                        SELECT generate_series(1, 12)::int AS mes
+                    ),
+                    esperados AS (
+                        SELECT m.mes,
+                               a.id AS acuerdo_id,
+                               p.id AS proveedor_id,
+                               p.nombre AS proveedor_nombre,
+                               a.titulo
+                        FROM meses m
+                        JOIN acuerdos_comerciales a
+                          ON a.activo = TRUE
+                         AND (
+                            a.vigencia_desde IS NULL
+                            OR a.vigencia_desde <= (MAKE_DATE(%s, m.mes, 1) + INTERVAL '1 month - 1 day')::date
+                         )
+                         AND (
+                            a.vigencia_hasta IS NULL
+                            OR a.vigencia_hasta >= MAKE_DATE(%s, m.mes, 1)
+                         )
+                        JOIN acuerdos_proveedores p ON p.id = a.proveedor_id
+                    )
+                    SELECT e.proveedor_id,
+                           e.proveedor_nombre,
+                           e.mes,
+                           COUNT(*)::int AS facturas,
+                           COALESCE(SUM(CASE WHEN COALESCE(f.cobrado, FALSE) THEN 1 ELSE 0 END), 0)::int AS cobradas,
+                           COALESCE(SUM(COALESCE(f.monto_factura, 0)), 0) AS total_facturado,
+                           COALESCE(SUM(CASE WHEN COALESCE(f.cobrado, FALSE) THEN COALESCE(f.monto_factura, 0) ELSE 0 END), 0) AS total_cobrado
+                    FROM esperados e
+                    LEFT JOIN acuerdos_facturas f
+                      ON f.acuerdo_id = e.acuerdo_id
+                     AND f.periodo_anho = %s
+                     AND f.periodo_mes = e.mes
+                    GROUP BY e.proveedor_id, e.proveedor_nombre, e.mes
+                    ORDER BY e.proveedor_nombre, e.mes
+                    """,
+                    (periodo_anho, periodo_anho, periodo_anho),
+                )
+                proveedores: dict[int, dict[str, Any]] = {}
+                for row in cur.fetchall():
+                    item = proveedores.setdefault(
+                        int(row["proveedor_id"]),
+                        {
+                            "proveedor_id": int(row["proveedor_id"]),
+                            "proveedor_nombre": row["proveedor_nombre"],
+                            "meses": [],
+                        },
+                    )
+                    facturas = int(row.get("facturas") or 0)
+                    cobradas = int(row.get("cobradas") or 0)
+                    item["meses"].append(
+                        {
+                            "mes": int(row["mes"]),
+                            "facturas": facturas,
+                            "cobradas": cobradas,
+                            "porcentaje": round((cobradas / facturas) * 100, 2) if facturas else 0,
+                            "total_facturado": row.get("total_facturado") or Decimal("0"),
+                            "total_cobrado": row.get("total_cobrado") or Decimal("0"),
+                        }
+                    )
+                return {"anho": periodo_anho, "meses": meses, "proveedores": list(proveedores.values())}
+
+    def save_acuerdo_cobranza(self, payload):
+        acuerdo_id = _parse_int(payload.get("acuerdo_id"))
+        periodo_mes = _parse_int(payload.get("periodo_mes"))
+        periodo_anho = _parse_int(payload.get("periodo_anho"))
+        numero_factura = str(payload.get("numero_factura") or "").strip()
+        monto_factura = Decimal(str(_parse_number(payload.get("monto_factura"))))
+        fecha_factura = _parse_flexible_date(payload.get("fecha_factura"))
+        cobrado = _parse_bool(payload.get("cobrado"), default=False)
+        fecha_cobro = _parse_flexible_date(payload.get("fecha_cobro"))
+        forma_cobro = str(payload.get("forma_cobro") or "").strip().lower()
+        observaciones = str(payload.get("observaciones") or "").strip()
+        formas_cobro = {"factura_canje", "transferencia", "efectivo", "cheque", "otro"}
+        if not acuerdo_id:
+            raise ValueError("El acuerdo_id es obligatorio.")
+        if periodo_mes < 1 or periodo_mes > 12:
+            raise ValueError("El mes debe estar entre 1 y 12.")
+        if periodo_anho < 2000 or periodo_anho > 2100:
+            raise ValueError("El anho del periodo no es valido.")
+        if not numero_factura:
+            raise ValueError("El numero de factura es obligatorio.")
+        if forma_cobro and forma_cobro not in formas_cobro:
+            raise ValueError("Forma de cobro invalida.")
+        if cobrado and not fecha_cobro:
+            fecha_cobro = date.today()
+        if not cobrado:
+            fecha_cobro = None
+        with self._connect(readonly=False) as conn:
+            try:
+                with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                    cur.execute("SELECT id FROM acuerdos_comerciales WHERE id = %s", (acuerdo_id,))
+                    if not cur.fetchone():
+                        raise ValueError("Acuerdo no encontrado.")
+                    cur.execute(
+                        """
+                        INSERT INTO acuerdos_facturas(
+                            acuerdo_id, periodo_anho, periodo_mes, numero_factura,
+                            monto_factura, fecha_factura, cobrado, fecha_cobro, forma_cobro, observaciones
+                        )
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        ON CONFLICT (acuerdo_id, periodo_anho, periodo_mes)
+                        DO UPDATE SET
+                            numero_factura = EXCLUDED.numero_factura,
+                            monto_factura = EXCLUDED.monto_factura,
+                            fecha_factura = EXCLUDED.fecha_factura,
+                            cobrado = EXCLUDED.cobrado,
+                            fecha_cobro = EXCLUDED.fecha_cobro,
+                            forma_cobro = EXCLUDED.forma_cobro,
+                            observaciones = EXCLUDED.observaciones,
+                            actualizado_en = NOW()
+                        RETURNING id, acuerdo_id, periodo_anho, periodo_mes, numero_factura,
+                                  monto_factura, fecha_factura, cobrado, fecha_cobro, forma_cobro,
+                                  observaciones, creado_en, actualizado_en
+                        """,
+                        (
+                            acuerdo_id,
+                            periodo_anho,
+                            periodo_mes,
+                            numero_factura,
+                            monto_factura,
+                            fecha_factura,
+                            cobrado,
+                            fecha_cobro,
+                            forma_cobro,
+                            observaciones,
+                        ),
+                    )
+                    row = cur.fetchone()
+                conn.commit()
+                return dict(row)
+            except Exception:
+                conn.rollback()
+                raise
+
     def list_acuerdos_comerciales(self, search=None):
         term = str(search or "").strip()
         filters = []
@@ -264,7 +618,8 @@ class AcuerdosComercialesRepository:
                     ids = [row["id"] for row in acuerdos]
                     cur.execute(
                         """
-                        SELECT id, acuerdo_id, sucursal, tipo_espacio, ubicacion, detalle, orden
+                        SELECT id, acuerdo_id, sucursal, tipo_espacio, ubicacion,
+                               codigo, bloque, numero, valor_gs, detalle, orden
                         FROM acuerdos_ubicaciones
                         WHERE acuerdo_id = ANY(%s)
                         ORDER BY acuerdo_id, orden, id
@@ -404,7 +759,7 @@ class AcuerdosComercialesRepository:
         snapshot = dict(acuerdo)
         cur.execute(
             """
-            SELECT sucursal, tipo_espacio, ubicacion, detalle, orden
+            SELECT sucursal, tipo_espacio, ubicacion, codigo, bloque, numero, valor_gs, detalle, orden
             FROM acuerdos_ubicaciones
             WHERE acuerdo_id = %s
             ORDER BY orden, id
@@ -429,6 +784,10 @@ class AcuerdosComercialesRepository:
                 "sucursal": item.get("sucursal"),
                 "tipo_espacio": item.get("tipo_espacio"),
                 "ubicacion": item.get("ubicacion"),
+                "codigo": item.get("codigo") or "",
+                "bloque": item.get("bloque") or "",
+                "numero": item.get("numero"),
+                "valor_gs": self._acuerdo_historial_value(item, "valor_gs"),
                 "detalle": item.get("detalle") or "",
                 "orden": item.get("orden"),
             }
@@ -528,6 +887,10 @@ class AcuerdosComercialesRepository:
             sucursal = str((item or {}).get("sucursal") or "").strip().lower()
             tipo = str((item or {}).get("tipo_espacio") or "").strip().lower()
             ubicacion = str((item or {}).get("ubicacion") or "").strip()
+            codigo = str((item or {}).get("codigo") or "").strip()
+            bloque = str((item or {}).get("bloque") or "").strip()
+            numero = _parse_int((item or {}).get("numero")) if (item or {}).get("numero") not in (None, "") else None
+            valor_gs = Decimal(str(_parse_number((item or {}).get("valor_gs")))) if (item or {}).get("valor_gs") not in (None, "") else None
             detalle = str((item or {}).get("detalle") or "").strip()
             if sucursal not in SUCURSALES:
                 raise ValueError("Sucursal invalida en ubicaciones.")
@@ -535,7 +898,7 @@ class AcuerdosComercialesRepository:
                 raise ValueError("Tipo de espacio invalido.")
             if not ubicacion:
                 raise ValueError("La ubicacion es obligatoria.")
-            clean_ubicaciones.append((sucursal, tipo, ubicacion, detalle, index))
+            clean_ubicaciones.append((sucursal, tipo, ubicacion, codigo, bloque, numero, valor_gs, detalle, index))
 
         with self._connect(readonly=False) as conn:
             try:
@@ -670,8 +1033,11 @@ class AcuerdosComercialesRepository:
 
                     cur.executemany(
                         """
-                        INSERT INTO acuerdos_ubicaciones(acuerdo_id, sucursal, tipo_espacio, ubicacion, detalle, orden)
-                        VALUES (%s, %s, %s, %s, %s, %s)
+                        INSERT INTO acuerdos_ubicaciones(
+                            acuerdo_id, sucursal, tipo_espacio, ubicacion, codigo, bloque,
+                            numero, valor_gs, detalle, orden
+                        )
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                         """,
                         [(acuerdo_id, *item) for item in clean_ubicaciones],
                     )
@@ -689,6 +1055,212 @@ class AcuerdosComercialesRepository:
                 conn.rollback()
                 raise
         return self.get_acuerdo_comercial(acuerdo_id)
+
+    def import_ubicaciones_aregua(self, raw_text, cambiado_por=None):
+        rows = self._parse_ubicaciones_import(raw_text)
+        if not rows:
+            raise ValueError("No se encontraron ubicaciones para importar.")
+
+        creados = 0
+        actualizados = 0
+        acuerdos_creados = 0
+        proveedores_creados = 0
+        with self._connect(readonly=False) as conn:
+            try:
+                with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                    for index, row in enumerate(rows, start=1):
+                        proveedor_id, proveedor_creado = self._upsert_import_proveedor(cur, row["proveedor"])
+                        if proveedor_creado:
+                            proveedores_creados += 1
+                        acuerdo_id, acuerdo_creado = self._ensure_import_acuerdo(cur, proveedor_id, row["proveedor"])
+                        if acuerdo_creado:
+                            acuerdos_creados += 1
+                        detalle = f"Bloque {row['bloque']} - N {row['numero']}".strip()
+                        cur.execute(
+                            """
+                            SELECT id
+                            FROM acuerdos_ubicaciones
+                            WHERE sucursal = 'aregua'
+                              AND LOWER(BTRIM(COALESCE(codigo, ''))) = LOWER(BTRIM(%s))
+                            LIMIT 1
+                            """,
+                            (row["codigo"],),
+                        )
+                        existing = cur.fetchone()
+                        if existing:
+                            cur.execute(
+                                """
+                                UPDATE acuerdos_ubicaciones
+                                SET acuerdo_id = %s,
+                                    tipo_espacio = %s,
+                                    ubicacion = %s,
+                                    codigo = %s,
+                                    bloque = %s,
+                                    numero = %s,
+                                    valor_gs = %s,
+                                    detalle = %s,
+                                    orden = %s
+                                WHERE id = %s
+                                """,
+                                (
+                                    acuerdo_id,
+                                    row["tipo_espacio"],
+                                    row["codigo"],
+                                    row["codigo"],
+                                    row["bloque"],
+                                    row["numero"],
+                                    row["valor_gs"],
+                                    detalle,
+                                    index,
+                                    int(existing["id"]),
+                                ),
+                            )
+                            actualizados += 1
+                        else:
+                            cur.execute(
+                                """
+                                INSERT INTO acuerdos_ubicaciones(
+                                    acuerdo_id, sucursal, tipo_espacio, ubicacion, codigo,
+                                    bloque, numero, valor_gs, detalle, orden
+                                )
+                                VALUES (%s, 'aregua', %s, %s, %s, %s, %s, %s, %s, %s)
+                                """,
+                                (
+                                    acuerdo_id,
+                                    row["tipo_espacio"],
+                                    row["codigo"],
+                                    row["codigo"],
+                                    row["bloque"],
+                                    row["numero"],
+                                    row["valor_gs"],
+                                    detalle,
+                                    index,
+                                ),
+                            )
+                            creados += 1
+                    cur.execute(
+                        """
+                        INSERT INTO acuerdos_historial(acuerdo_id, accion, usuario, cambios)
+                        SELECT a.id,
+                               'importacion_ubicaciones',
+                               %s,
+                               %s::jsonb
+                        FROM acuerdos_comerciales a
+                        WHERE a.id IN (
+                            SELECT DISTINCT acuerdo_id
+                            FROM acuerdos_ubicaciones
+                            WHERE sucursal = 'aregua'
+                        )
+                        """,
+                        (
+                            str(cambiado_por or "sistema").strip() or "sistema",
+                            self._jsonb([
+                                {
+                                    "campo": "Ubicaciones Aregua",
+                                    "antes": None,
+                                    "despues": f"{creados} creadas, {actualizados} actualizadas",
+                                }
+                            ]),
+                        ),
+                    )
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
+        return {
+            "ok": True,
+            "leidas": len(rows),
+            "creadas": creados,
+            "actualizadas": actualizados,
+            "proveedores_creados": proveedores_creados,
+            "acuerdos_creados": acuerdos_creados,
+        }
+
+    def _parse_ubicaciones_import(self, raw_text):
+        text = str(raw_text or "").strip()
+        if not text:
+            return []
+        parsed = []
+        for line in text.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            columns = self._split_import_line(line)
+            if len(columns) < 6:
+                continue
+            if columns[0].strip().lower() in {"codigo", "código"}:
+                continue
+            codigo = columns[0].strip()
+            bloque = columns[1].strip()
+            numero = _parse_int(columns[2])
+            tipo_raw = columns[3].strip().lower()
+            proveedor = columns[4].strip()
+            valor_gs = Decimal(str(_parse_number(columns[5])))
+            if not codigo or not bloque or not proveedor:
+                continue
+            tipo_espacio = "puntera" if "puntera" in tipo_raw else "pestana"
+            parsed.append(
+                {
+                    "codigo": codigo,
+                    "bloque": bloque,
+                    "numero": numero,
+                    "tipo_espacio": tipo_espacio,
+                    "proveedor": proveedor,
+                    "valor_gs": valor_gs,
+                }
+            )
+        return parsed
+
+    def _split_import_line(self, line):
+        if "\t" in line:
+            return [part.strip() for part in line.split("\t")]
+        if ";" in line:
+            return next(csv.reader(StringIO(line), delimiter=";"))
+        if "," in line:
+            return next(csv.reader(StringIO(line)))
+        return [part.strip() for part in re.split(r"\s{2,}", line) if part.strip()]
+
+    def _upsert_import_proveedor(self, cur, nombre):
+        cur.execute(
+            """
+            INSERT INTO acuerdos_proveedores(nombre, ruc, telefono, email)
+            VALUES (%s, '', '', '')
+            ON CONFLICT (LOWER(BTRIM(nombre)), LOWER(BTRIM(COALESCE(ruc, ''))))
+            DO UPDATE SET actualizado_en = NOW()
+            RETURNING id, (xmax = 0) AS creado
+            """,
+            (str(nombre or "").strip(),),
+        )
+        row = cur.fetchone()
+        return int(row["id"]), bool(row.get("creado"))
+
+    def _ensure_import_acuerdo(self, cur, proveedor_id, proveedor_nombre):
+        cur.execute(
+            """
+            SELECT id
+            FROM acuerdos_comerciales
+            WHERE proveedor_id = %s
+              AND activo IS TRUE
+            ORDER BY COALESCE(vigencia_desde, creado_en::date) DESC, id DESC
+            LIMIT 1
+            """,
+            (int(proveedor_id),),
+        )
+        row = cur.fetchone()
+        if row:
+            return int(row["id"]), False
+        titulo = f"Acuerdo comercial {proveedor_nombre}".strip()
+        cur.execute(
+            """
+            INSERT INTO acuerdos_comerciales(
+                proveedor_id, titulo, retorno_porcentaje, estado_renovacion, observaciones, activo
+            )
+            VALUES (%s, %s, 0, 'vigente', 'Creado por importacion de ubicaciones Aregua.', TRUE)
+            RETURNING id
+            """,
+            (int(proveedor_id), titulo),
+        )
+        return int(cur.fetchone()["id"]), True
 
     def get_acuerdo_comercial(self, acuerdo_id):
         with self._connect(readonly=True) as conn:
@@ -728,7 +1300,8 @@ class AcuerdosComercialesRepository:
                 acuerdo = dict(acuerdo)
                 cur.execute(
                     """
-                    SELECT id, acuerdo_id, sucursal, tipo_espacio, ubicacion, detalle, orden
+                    SELECT id, acuerdo_id, sucursal, tipo_espacio, ubicacion,
+                           codigo, bloque, numero, valor_gs, detalle, orden
                     FROM acuerdos_ubicaciones
                     WHERE acuerdo_id = %s
                     ORDER BY orden, id
@@ -777,7 +1350,8 @@ class AcuerdosComercialesRepository:
                 ids = [row["id"] for row in acuerdos]
                 cur.execute(
                     """
-                    SELECT id, acuerdo_id, sucursal, tipo_espacio, ubicacion, detalle, orden
+                    SELECT id, acuerdo_id, sucursal, tipo_espacio, ubicacion,
+                           codigo, bloque, numero, valor_gs, detalle, orden
                     FROM acuerdos_ubicaciones
                     WHERE acuerdo_id = ANY(%s)
                     ORDER BY acuerdo_id, orden, id

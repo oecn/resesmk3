@@ -217,6 +217,7 @@ export class AdminUsersComponent implements OnInit {
       { key: 'distribuciones' as AppModuleKey, label: 'Distribuciones' },
       { key: 'flota' as AppModuleKey, label: 'Flota' },
       { key: 'acuerdos-comerciales' as AppModuleKey, label: 'Acuerdos comerciales' },
+      { key: 'contratos' as AppModuleKey, label: 'Contratos' },
       { key: 'archivos-directorio' as AppModuleKey, label: 'Archivos de directorio' },
       { key: 'usuarios' as AppModuleKey, label: 'Usuarios' },
     ];
@@ -231,6 +232,7 @@ export class AdminUsersComponent implements OnInit {
         'distribuciones',
         'flota',
         'acuerdos-comerciales',
+        'contratos',
         'archivos-directorio',
       ],
       recepcion: ['recepcion', 'flota'],

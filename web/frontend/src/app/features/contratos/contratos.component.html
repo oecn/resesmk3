@@ -1,0 +1,161 @@
+<section class="contratos-page">
+  <p *ngIf="error()" class="alert">{{ error() }}</p>
+  <p *ngIf="ok()" class="success-alert">{{ ok() }}</p>
+  <p *ngIf="loading()" class="muted">Cargando o guardando contratos...</p>
+
+  <section class="panel">
+    <div class="panel-title">
+      <div>
+        <h2>Contratos</h2>
+        <p>Registro de partes, vigencia, monto y clausulas importantes.</p>
+      </div>
+      <span>{{ data()?.items?.length ?? 0 }} registros</span>
+    </div>
+
+    <form class="form-grid" (ngSubmit)="guardarContrato()">
+      <label>
+        Inicio de contrato
+        <input type="date" name="contratoInicio" [(ngModel)]="contratoForm.inicio_contrato" required>
+      </label>
+      <label>
+        Duracion en meses
+        <input type="number" min="1" name="contratoDuracion" [(ngModel)]="contratoForm.duracion_meses">
+      </label>
+      <label>
+        Fecha fin
+        <input type="date" name="contratoFin" [ngModel]="fechaFinContrato(contratoForm)" readonly>
+      </label>
+      <label>
+        Monto de contrato
+        <input type="text" name="contratoMonto" [(ngModel)]="contratoForm.monto_contrato" placeholder="0">
+      </label>
+      <div class="expiry-form">
+        <span>Vencimiento</span>
+        <strong class="expiry-badge" [ngClass]="vencimientoClass(contratoForm)">{{ vencimientoLabel(contratoForm) }}</strong>
+      </div>
+      <label>
+        Quien ofrece el contrato
+        <input type="text" name="contratoOfrece" [(ngModel)]="contratoForm.ofrece_contrato" required>
+      </label>
+      <label>
+        El que contrata
+        <input type="text" name="contratoContratante" [(ngModel)]="contratoForm.contratante" required>
+      </label>
+      <label class="wide-field">
+        Contexto
+        <textarea name="contratoContexto" rows="3" [(ngModel)]="contratoForm.contexto"></textarea>
+      </label>
+      <label class="wide-field">
+        Clausulas importantes
+        <textarea name="contratoClausulas" rows="3" [(ngModel)]="contratoForm.clausulas_importantes"></textarea>
+      </label>
+      <div class="form-actions">
+        <button type="button" class="secondary" *ngIf="contratoForm.id" (click)="cancelarEdicion()">Cancelar</button>
+        <button type="submit" [disabled]="loading()">{{ contratoForm.id ? 'Actualizar' : 'Guardar' }} contrato</button>
+      </div>
+    </form>
+  </section>
+
+  <section class="panel">
+    <div class="filters-row">
+      <label>
+        Buscar
+        <input type="text" name="contratoSearch" [(ngModel)]="search" (keyup.enter)="cargarContratos()">
+      </label>
+      <button type="button" (click)="cargarContratos()" [disabled]="loading()">Filtrar</button>
+    </div>
+
+    <div class="table-wrap">
+      <table class="contracts-table">
+        <thead>
+          <tr>
+            <th>Inicio</th>
+            <th>Fin</th>
+            <th>Duracion</th>
+            <th>Vencimiento</th>
+            <th>Ofrece</th>
+            <th>Contrata</th>
+            <th>Monto</th>
+            <th>Contexto</th>
+            <th>Clausulas</th>
+            <th>Accion</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let item of data()?.items ?? []">
+            <td>{{ item.inicio_contrato }}</td>
+            <td>{{ fechaFinContrato(item) || '-' }}</td>
+            <td>{{ item.duracion_meses ? item.duracion_meses + ' meses' : '-' }}</td>
+            <td><span class="expiry-badge" [ngClass]="vencimientoClass(item)">{{ vencimientoLabel(item) }}</span></td>
+            <td>{{ item.ofrece_contrato }}</td>
+            <td>{{ item.contratante }}</td>
+            <td>{{ formatMoney(item.monto_contrato) }}</td>
+            <td class="text-cell">
+              <div class="clauses-inline">
+                <span class="compact-text" [title]="item.contexto || ''">{{ resumenTexto(item.contexto, 42) }}</span>
+                <button
+                  type="button"
+                  class="secondary icon-button"
+                  *ngIf="item.contexto"
+                  (click)="verContexto(item)"
+                  title="Ver contexto completo"
+                >
+                  Ver
+                </button>
+              </div>
+            </td>
+            <td class="description-cell clauses-cell">
+              <div class="clauses-inline">
+                <span class="clause-preview" [title]="item.clausulas_importantes || ''">{{ resumenTexto(item.clausulas_importantes, 42) }}</span>
+                <button
+                  type="button"
+                  class="secondary icon-button"
+                  *ngIf="item.clausulas_importantes"
+                  (click)="verClausulas(item)"
+                  title="Ver clausulas completas"
+                >
+                  Ver
+                </button>
+              </div>
+            </td>
+            <td class="actions-cell">
+              <div class="row-actions">
+                <button type="button" class="secondary" (click)="editarContrato(item)">Editar</button>
+                <button type="button" class="danger" (click)="eliminarContrato(item)">Eliminar</button>
+              </div>
+            </td>
+          </tr>
+          <tr *ngIf="!loading() && !(data()?.items?.length)">
+            <td colspan="10" class="empty-cell">No hay contratos registrados.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <div class="modal-backdrop" *ngIf="clausulasPopup() as contrato" (click)="cerrarClausulas()">
+    <section class="modal-panel" (click)="$event.stopPropagation()">
+      <div class="modal-title">
+        <div>
+          <h2>Clausulas importantes</h2>
+          <span>{{ contrato.ofrece_contrato }} / {{ contrato.contratante }}</span>
+        </div>
+        <button type="button" class="secondary" (click)="cerrarClausulas()">Cerrar</button>
+      </div>
+      <p class="modal-text">{{ contrato.clausulas_importantes }}</p>
+    </section>
+  </div>
+
+  <div class="modal-backdrop" *ngIf="contextoPopup() as contrato" (click)="cerrarContexto()">
+    <section class="modal-panel" (click)="$event.stopPropagation()">
+      <div class="modal-title">
+        <div>
+          <h2>Contexto</h2>
+          <span>{{ contrato.ofrece_contrato }} / {{ contrato.contratante }}</span>
+        </div>
+        <button type="button" class="secondary" (click)="cerrarContexto()">Cerrar</button>
+      </div>
+      <p class="modal-text">{{ contrato.contexto }}</p>
+    </section>
+  </div>
+</section>

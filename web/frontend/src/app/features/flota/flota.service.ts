@@ -57,6 +57,7 @@ export class FlotaService {
   }
 
   saveFlotaCombustible(payload: {
+    id?: number | null;
     fecha: string;
     vehiculo_id: number;
     proveedor_id?: number | null;

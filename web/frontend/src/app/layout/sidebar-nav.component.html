@@ -1,0 +1,127 @@
+<div class="view-menu-backdrop" *ngIf="viewMenuOpen" (click)="closeMenu.emit()"></div>
+
+<aside class="view-sidebar" [class.open]="viewMenuOpen" [class.collapsed]="!viewMenuOpen" aria-label="Secciones">
+  <button
+    type="button"
+    class="view-menu-trigger"
+    [class.active]="viewMenuOpen"
+    (click)="toggleMenu.emit()"
+    aria-label="Abrir secciones"
+    [attr.aria-expanded]="viewMenuOpen"
+  >
+    <span class="burger-icon" aria-hidden="true">
+      <span></span>
+      <span></span>
+      <span></span>
+    </span>
+    <span class="view-menu-label">Secciones</span>
+  </button>
+  <button
+    type="button"
+    class="theme-toggle"
+    [class.active]="darkMode"
+    (click)="toggleTheme.emit()"
+    [attr.aria-label]="darkMode ? 'Activar modo claro' : 'Activar modo oscuro'"
+    [title]="darkMode ? 'Modo claro' : 'Modo oscuro'"
+  >
+    <span aria-hidden="true">{{ darkMode ? 'Ã¢Ëœâ‚¬' : 'Ã¢ËœÂ¾' }}</span>
+  </button>
+  <section class="view-user-card">
+    <div class="view-user-avatar">{{ userInitials }}</div>
+    <div class="view-user-meta">
+      <strong>{{ userDisplayName }}</strong>
+      <span>{{ userRoleLabel }}</span>
+    </div>
+  </section>
+  <nav class="view-stack">
+    <button *ngIf="canViewDashboard" type="button" title="Dashboard" [class.active]="vista === 'dashboard'" (click)="selectView.emit('dashboard')">
+      <span class="view-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24">
+          <path d="M4 4h7v7H4z"></path>
+          <path d="M13 4h7v7h-7z"></path>
+          <path d="M4 13h7v7H4z"></path>
+          <path d="M13 13h7v7h-7z"></path>
+        </svg>
+      </span>
+      <span class="view-text">Dashboard</span>
+    </button>
+    <button *ngIf="canManageComprasFaena" type="button" title="Compras y faena" [class.active]="vista === 'compras-faena'" (click)="selectView.emit('compras-faena')">
+      <span class="view-icon text-icon" aria-hidden="true">Gs.</span>
+      <span class="view-text">Compras y faena</span>
+    </button>
+    <button *ngIf="canViewResumenes" type="button" title="Resumenes" [class.active]="vista === 'resumenes'" (click)="selectView.emit('resumenes')">
+      <span class="view-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24">
+          <path d="M8 4h8l1 3H7z"></path>
+          <path d="M6 6h12v15H6z"></path>
+          <path d="M9 11h6"></path>
+          <path d="M9 15h6"></path>
+        </svg>
+      </span>
+      <span class="view-text">Resumenes</span>
+    </button>
+    <button *ngIf="canManageDistribuciones" type="button" title="Distribuciones" [class.active]="vista === 'distribuciones'" (click)="selectView.emit('distribuciones')">
+      <span class="view-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24">
+          <path d="M3 7h11v9H3z"></path>
+          <path d="M14 10h4l3 3v3h-7z"></path>
+          <path d="M7 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4z"></path>
+          <path d="M18 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4z"></path>
+        </svg>
+      </span>
+      <span class="view-text">Distribuciones</span>
+    </button>
+    <button *ngIf="canManageFlota" type="button" title="Flota" [class.active]="vista === 'flota'" (click)="selectView.emit('flota')">
+      <span class="view-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24">
+          <path d="M3 8h12l2 4h4v5h-2"></path>
+          <path d="M5 17a2 2 0 1 0 0-4 2 2 0 0 0 0 4z"></path>
+          <path d="M17 17a2 2 0 1 0 0-4 2 2 0 0 0 0 4z"></path>
+          <path d="M7 17h8"></path>
+        </svg>
+      </span>
+      <span class="view-text">Flota</span>
+    </button>
+    <button *ngIf="canManageRecepcion" type="button" title="Recepcion" [class.active]="vista === 'recepcion'" (click)="selectView.emit('recepcion')">
+      <span class="view-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24">
+          <path d="M12 4v16"></path>
+          <path d="M6 8h12"></path>
+          <path d="M7 8l-3 6h6z"></path>
+          <path d="M17 8l-3 6h6z"></path>
+          <path d="M9 20h6"></path>
+        </svg>
+      </span>
+      <span class="view-text">Recepcion</span>
+    </button>
+    <button *ngIf="canManageUsers" type="button" title="Usuarios" [class.active]="vista === 'usuarios'" (click)="selectView.emit('usuarios')">
+      <span class="view-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24">
+          <path d="M7 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"></path>
+          <path d="M17 12a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z"></path>
+          <path d="M3 19c0-3 2.7-5 6-5s6 2 6 5"></path>
+          <path d="M14 19c.3-1.9 1.9-3.4 4-3.8"></path>
+        </svg>
+      </span>
+      <span class="view-text">Usuarios</span>
+    </button>
+    <button *ngIf="canViewAcuerdos" type="button" title="Acuerdos comerciales" [class.active]="vista === 'acuerdos-comerciales'" (click)="selectView.emit('acuerdos-comerciales')">
+      <span class="view-icon text-icon" aria-hidden="true">AC</span>
+      <span class="view-text">Acuerdos</span>
+    </button>
+    <button *ngIf="canViewContratos" type="button" title="Contratos" [class.active]="vista === 'contratos'" (click)="selectView.emit('contratos')">
+      <span class="view-icon text-icon" aria-hidden="true">CT</span>
+      <span class="view-text">Contratos</span>
+    </button>
+    <button *ngIf="canViewArchivosDirectorio" type="button" title="Archivos de directorio" [class.active]="vista === 'archivos-directorio'" (click)="selectView.emit('archivos-directorio')">
+      <span class="view-icon text-icon" aria-hidden="true">AD</span>
+      <span class="view-text">Archivos</span>
+    </button>
+  </nav>
+  <div class="view-sidebar-footer">
+    <button type="button" class="danger logout-button" title="Cerrar sesion" (click)="logout.emit()">
+      <span class="view-icon" aria-hidden="true">CS</span>
+      <span class="view-text">Cerrar sesion</span>
+    </button>
+  </div>
+</aside>

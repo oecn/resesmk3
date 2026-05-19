@@ -21,6 +21,10 @@
       <strong>{{ totalPunteras() }}</strong>
     </article>
     <article class="acuerdo-kpi">
+      <span>Pestañas</span>
+      <strong>{{ totalPestanas() }}</strong>
+    </article>
+    <article class="acuerdo-kpi">
       <span>Proveedores</span>
       <strong>{{ proveedoresCount() }}</strong>
     </article>
@@ -30,7 +34,10 @@
     <button type="button" [class.active]="activeTab === 'cargados'" (click)="cambiarTab('cargados')">Acuerdos cargados</button>
     <button type="button" [class.active]="activeTab === 'nuevo'" (click)="cambiarTab('nuevo')">Nuevo acuerdo</button>
     <button type="button" [class.active]="activeTab === 'proveedores'" (click)="cambiarTab('proveedores')">Proveedores</button>
+    <button type="button" [class.active]="activeTab === 'cobranzas'" (click)="cambiarTab('cobranzas')">Cobranza</button>
     <button type="button" [class.active]="activeTab === 'historial-proveedor'" (click)="cambiarTab('historial-proveedor')">Historial proveedor</button>
+    <button type="button" [class.active]="activeTab === 'importar-ubicaciones'" (click)="cambiarTab('importar-ubicaciones')">Importar ubicaciones</button>
+    <button type="button" [class.active]="activeTab === 'mapa'" (click)="cambiarTab('mapa')">Mapa</button>
   </nav>
 
   <section class="acuerdos-layout form-only" *ngIf="activeTab === 'nuevo'">
@@ -117,6 +124,14 @@
           <label class="location-field">
             Ubicacion
             <input type="text" [name]="'ubicacion' + i" [(ngModel)]="ubicacion.ubicacion" placeholder="Pasillo 12 zona verduleria">
+          </label>
+          <label>
+            Codigo
+            <input type="text" [name]="'codigo' + i" [(ngModel)]="ubicacion.codigo" placeholder="A-1-P">
+          </label>
+          <label>
+            Valor Gs.
+            <input type="text" [name]="'valorGs' + i" [(ngModel)]="ubicacion.valor_gs" placeholder="2000000">
           </label>
           <button type="button" class="danger mini-button" (click)="quitarUbicacion(i)">Quitar</button>
         </div>
@@ -216,10 +231,15 @@
       <section class="detalle-section">
         <h3>Ubicaciones</h3>
         <div class="detalle-ubicaciones">
-          <article *ngFor="let ubicacion of detalle.ubicaciones">
-            <strong>{{ tipoEspacioLabel(ubicacion.tipo_espacio) }}</strong>
-            <span>{{ ubicacion.sucursal }} - {{ ubicacion.ubicacion }}</span>
-            <small *ngIf="ubicacion.detalle">{{ ubicacion.detalle }}</small>
+          <article *ngFor="let group of ubicacionesPorTipo(detalle.ubicaciones)">
+            <strong>{{ tipoEspacioLabel(group.tipo) }}</strong>
+            <div class="ubicacion-stack">
+              <span *ngFor="let ubicacion of group.items">
+                {{ ubicacion.sucursal }} - {{ ubicacion.codigo || ubicacion.ubicacion }}
+                <small *ngIf="ubicacion.valor_gs">Gs. {{ ubicacion.valor_gs | number:'1.0-0' }}</small>
+                <small *ngIf="ubicacion.detalle">{{ ubicacion.detalle }}</small>
+              </span>
+            </div>
           </article>
         </div>
       </section>
@@ -258,9 +278,9 @@
             <span>{{ acuerdo.ubicaciones_count }} ubicaciones</span>
           </div>
           <ul>
-            <li *ngFor="let ubicacion of acuerdo.ubicaciones">
-              <strong>{{ tipoEspacioLabel(ubicacion.tipo_espacio) }}</strong>
-              <span>{{ ubicacion.sucursal }} - {{ ubicacion.ubicacion }}</span>
+            <li *ngFor="let group of ubicacionesPorTipo(acuerdo.ubicaciones)">
+              <strong>{{ tipoEspacioLabel(group.tipo) }}</strong>
+              <span *ngFor="let ubicacion of group.items">{{ ubicacion.sucursal }} - {{ ubicacion.codigo || ubicacion.ubicacion }}</span>
             </li>
           </ul>
         </article>
@@ -347,6 +367,128 @@
     </section>
   </section>
 
+  <section class="acuerdos-layout form-only" *ngIf="activeTab === 'cobranzas'">
+    <app-acuerdos-cobranzas-panel></app-acuerdos-cobranzas-panel>
+  </section>
+
+  <section class="acuerdos-layout form-only" *ngIf="activeTab === 'importar-ubicaciones'">
+    <section class="acuerdos-panel acuerdos-form">
+      <div class="panel-title">
+        <div>
+          <h2>Importar ubicaciones Aregua</h2>
+          <span>Pega columnas: Codigo, Bloque, N, Tipo, Proveedor, Valor G.</span>
+        </div>
+      </div>
+      <label class="wide">
+        Tabla pegada desde Excel
+        <textarea
+          name="importUbicacionesTexto"
+          rows="14"
+          [(ngModel)]="importUbicacionesTexto"
+          placeholder="A-1-P&#9;A&#9;1&#9;Puntera&#9;BIMBO&#9;2000000"
+        ></textarea>
+      </label>
+      <div class="form-actions">
+        <button type="button" (click)="importarUbicacionesAregua()" [disabled]="loading()">Importar Aregua</button>
+      </div>
+    </section>
+  </section>
+
+  <section class="acuerdos-layout form-only" *ngIf="activeTab === 'mapa'">
+    <section class="acuerdos-panel mapa-panel">
+      <div class="panel-title">
+        <div>
+          <h2>Mapa por sucursal</h2>
+          <span>Plano esquematico por bloques y ubicaciones cargadas.</span>
+        </div>
+        <label class="map-select">
+          Sucursal
+          <select name="mapaSucursal" [(ngModel)]="mapaSucursal">
+            <option value="aregua">Aregua</option>
+            <option value="luque">Luque</option>
+            <option value="itaugua">Itaugua</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="map-legend">
+        <span class="block-a">Rojo: bloque A</span>
+        <span class="block-b">Azul: bloque B</span>
+        <span class="block-c">Verde: bloque C</span>
+        <span class="block-d">Amarillo: bloque D</span>
+      </div>
+
+      <div class="store-map">
+        <section class="map-block" *ngFor="let bloque of mapaBloques" [ngClass]="bloque.className">
+          <div class="block-label">{{ bloque.label }}</div>
+          <div class="gondola-row">
+            <article class="gondola" *ngFor="let slot of mapaUbicacionesPorBloque(bloque.key)">
+              <strong>{{ bloque.key }}-{{ slot.numero }}</strong>
+              <div class="gondola-body">
+                <div
+                  class="puntera-slot"
+                  [class.occupied]="slot.puntera && !esUbicacionLibre(slot.puntera)"
+                  [class.free-place]="!slot.puntera || esUbicacionLibre(slot.puntera)"
+                  [title]="slot.puntera && !esUbicacionLibre(slot.puntera) ? slot.puntera.proveedor_nombre : 'Libre'"
+                  (dblclick)="verMapaUbicacion(slot.puntera)"
+                >
+                  <span>{{ slot.puntera && !esUbicacionLibre(slot.puntera) ? slot.puntera.proveedor_nombre : 'Libre' }}</span>
+                  <small>{{ slot.puntera?.codigo || (bloque.key + '-' + slot.numero + '-P') }}</small>
+                </div>
+                <div class="pestanas-slot">
+                  <span
+                    *ngFor="let pestana of slot.pestanas"
+                    class="pestana-pill"
+                    [class.free-place]="esUbicacionLibre(pestana)"
+                    [title]="esUbicacionLibre(pestana) ? 'Libre' : pestana.proveedor_nombre"
+                    (dblclick)="verMapaUbicacion(pestana)"
+                  >
+                    {{ pestana.codigo || pestana.ubicacion }} - {{ esUbicacionLibre(pestana) ? 'Libre' : pestana.proveedor_nombre }}
+                  </span>
+                  <span class="pestana-pill empty" *ngIf="!slot.pestanas.length">Sin pestañas</span>
+                </div>
+              </div>
+            </article>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <div class="map-modal-backdrop" *ngIf="mapaUbicacionDetalle() as lugar" (click)="cerrarMapaUbicacion()">
+      <section class="map-modal" (click)="$event.stopPropagation()">
+        <div class="panel-title">
+          <div>
+            <h2>{{ lugar.codigo || lugar.ubicacion }}</h2>
+            <span>{{ tipoEspacioLabel(lugar.tipo_espacio) }} - {{ lugar.sucursal }}</span>
+          </div>
+          <button type="button" class="secondary mini-button" (click)="cerrarMapaUbicacion()">Cerrar</button>
+        </div>
+        <div class="map-detail-grid">
+          <div>
+            <span>Proveedor</span>
+            <strong>{{ esUbicacionLibre(lugar) ? 'Libre' : (lugar.proveedor_nombre || 'Libre') }}</strong>
+          </div>
+          <div>
+            <span>Bloque</span>
+            <strong>{{ lugar.bloque || bloqueDesdeCodigo(lugar.codigo || lugar.ubicacion) || '-' }}</strong>
+          </div>
+          <div>
+            <span>Numero</span>
+            <strong>{{ lugar.numero || numeroDesdeCodigo(lugar.codigo || lugar.ubicacion) || '-' }}</strong>
+          </div>
+          <div>
+            <span>Valor</span>
+            <strong>{{ lugar.valor_gs ? ('Gs. ' + (lugar.valor_gs | number:'1.0-0')) : '-' }}</strong>
+          </div>
+          <div class="wide">
+            <span>Detalle</span>
+            <strong>{{ lugar.detalle || '-' }}</strong>
+          </div>
+        </div>
+      </section>
+    </div>
+  </section>
+
   <section class="acuerdos-layout cargados-layout" *ngIf="activeTab === 'historial-proveedor'">
     <section class="acuerdos-panel">
       <div class="panel-title">
@@ -385,9 +527,9 @@
             <span>{{ acuerdo.punteras_count }} punteras</span>
           </div>
           <ul>
-            <li *ngFor="let ubicacion of acuerdo.ubicaciones">
-              <strong>{{ tipoEspacioLabel(ubicacion.tipo_espacio) }}</strong>
-              <span>{{ ubicacion.sucursal }} - {{ ubicacion.ubicacion }}</span>
+            <li *ngFor="let group of ubicacionesPorTipo(acuerdo.ubicaciones)">
+              <strong>{{ tipoEspacioLabel(group.tipo) }}</strong>
+              <span *ngFor="let ubicacion of group.items">{{ ubicacion.sucursal }} - {{ ubicacion.codigo || ubicacion.ubicacion }}</span>
             </li>
           </ul>
         </article>

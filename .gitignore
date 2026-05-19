@@ -61,14 +61,7 @@ web/frontend/dist/
 web/frontend/.angular/
 web/frontend/coverage/
 
-# Generic frontend build output
-web-dashboard/node_modules/
-web-dashboard/dist/
-web-dashboard/.angular/
-web-dashboard/coverage/
-
 # Python local artifacts in this repo
 web/backend/__pycache__/
 web/backend/auth/__pycache__/
 web/backend/migrations/__pycache__/
-

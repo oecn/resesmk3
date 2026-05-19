@@ -14,8 +14,12 @@ def register_routes(router: Router):
     router.get("/api/acuerdos-comerciales/proveedores", list_proveedores)
     router.get("/api/acuerdos-comerciales/historial", list_historial)
     router.get("/api/acuerdos-comerciales/historial-proveedor", list_historial_proveedor)
+    router.get("/api/acuerdos-comerciales/cobranzas/anual", list_cobranzas_anual)
+    router.get("/api/acuerdos-comerciales/cobranzas", list_cobranzas)
     router.get("/api/acuerdos-comerciales", list_acuerdos)
     router.post("/api/acuerdos-comerciales/proveedores", save_proveedor)
+    router.post("/api/acuerdos-comerciales/cobranzas", save_cobranza)
+    router.post("/api/acuerdos-comerciales/ubicaciones/aregua/import", import_ubicaciones_aregua)
     router.post("/api/acuerdos-comerciales", save_acuerdo)
 
 
@@ -45,6 +49,23 @@ def list_acuerdos(ctx: RequestContext):
     return service.list_acuerdos(search=ctx.query.get("search", [""])[0])
 
 
+def list_cobranzas(ctx: RequestContext):
+    ctx.handler._require_roles(ROLES_ACUERDOS)
+    mes = ctx.query.get("mes", [None])[0]
+    anho = ctx.query.get("anho", [None])[0]
+    if not mes or not anho:
+        raise ValueError("Mes y anho son obligatorios.")
+    return service.list_cobranzas(mes=mes, anho=anho)
+
+
+def list_cobranzas_anual(ctx: RequestContext):
+    ctx.handler._require_roles(ROLES_ACUERDOS)
+    anho = ctx.query.get("anho", [None])[0]
+    if not anho:
+        raise ValueError("Anho es obligatorio.")
+    return service.list_cobranzas_anual(anho=anho)
+
+
 def save_proveedor(ctx: RequestContext):
     payload = ctx.payload or {}
     ctx.handler._require_roles(ROLES_ACUERDOS)
@@ -54,6 +75,12 @@ def save_proveedor(ctx: RequestContext):
     )
 
 
+def save_cobranza(ctx: RequestContext):
+    payload = ctx.payload or {}
+    ctx.handler._require_roles(ROLES_ACUERDOS)
+    ctx.handler._send_json(service.save_cobranza(payload), status=200)
+
+
 def save_acuerdo(ctx: RequestContext):
     payload = ctx.payload or {}
     user = ctx.handler._require_roles(ROLES_ACUERDOS)
@@ -61,3 +88,9 @@ def save_acuerdo(ctx: RequestContext):
         service.save_acuerdo(payload, cambiado_por=user.get("username")),
         status=201 if not payload.get("id") else 200,
     )
+
+
+def import_ubicaciones_aregua(ctx: RequestContext):
+    payload = ctx.payload or {}
+    user = ctx.handler._require_roles(ROLES_ACUERDOS)
+    ctx.handler._send_json(service.import_ubicaciones_aregua(payload, cambiado_por=user.get("username")), status=200)

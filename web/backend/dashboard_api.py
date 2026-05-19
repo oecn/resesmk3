@@ -55,6 +55,13 @@ def _json_default(value: Any):
     return str(value)
 
 
+def _is_client_disconnect(exc: OSError) -> bool:
+    return isinstance(exc, (BrokenPipeError, ConnectionAbortedError, ConnectionResetError)) or getattr(exc, "winerror", None) in {
+        10053,
+        10054,
+    }
+
+
 def _parse_date(value: str | None):
     if not value:
         return None
@@ -1183,6 +1190,7 @@ class DashboardRepository:
         return {"items": rows}
 
     def save_carga_combustible(self, payload, cargado_por=None, sucursal_scope=None):
+        carga_id = _parse_int(payload.get("id") or 0)
         fecha = _parse_date(payload.get("fecha"))
         vehiculo_id = int(payload.get("vehiculo_id") or 0)
         proveedor_id = payload.get("proveedor_id")
@@ -1214,33 +1222,80 @@ class DashboardRepository:
                     self._validate_flota_sucursal_scope(vehiculo, sucursal_scope)
                     self._validate_proveedor_tipo(cur, proveedor_id, "combustible")
                     self._validate_km_flota(cur, vehiculo_id, km_actual)
-                    self._validate_factura_combustible_unica(cur, proveedor_id, nro_factura)
-                    cur.execute(
-                        """
-                        INSERT INTO cargas_combustible(
-                            vehiculo_id, fecha, proveedor_id, litros, importe, precio_litro,
-                            tipo_combustible, km_actual, nro_factura, observacion, semana, anho, cargado_por
+                    self._validate_factura_combustible_unica(cur, proveedor_id, nro_factura, exclude_id=carga_id or None)
+                    if carga_id:
+                        cur.execute(
+                            """
+                            SELECT id
+                            FROM cargas_combustible
+                            WHERE id = %s AND eliminado_en IS NULL
+                            """,
+                            (carga_id,),
                         )
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                        RETURNING id, fecha, vehiculo_id, proveedor_id, litros, importe, precio_litro,
-                                  tipo_combustible, km_actual, nro_factura, observacion, semana, anho, cargado_por, creado_en
-                        """,
-                        (
-                            vehiculo_id,
-                            fecha,
-                            proveedor_id,
-                            litros,
-                            importe,
-                            precio_litro,
-                            tipo_combustible or None,
-                            km_actual,
-                            nro_factura,
-                            observacion,
-                            semana,
-                            anho,
-                            str(cargado_por or "").strip() or None,
-                        ),
-                    )
+                        if not cur.fetchone():
+                            raise ValueError("Carga de combustible no encontrada.")
+                        cur.execute(
+                            """
+                            UPDATE cargas_combustible
+                            SET vehiculo_id = %s,
+                                fecha = %s,
+                                proveedor_id = %s,
+                                litros = %s,
+                                importe = %s,
+                                precio_litro = %s,
+                                tipo_combustible = %s,
+                                km_actual = %s,
+                                nro_factura = %s,
+                                observacion = %s,
+                                semana = %s,
+                                anho = %s
+                            WHERE id = %s
+                            RETURNING id, fecha, vehiculo_id, proveedor_id, litros, importe, precio_litro,
+                                      tipo_combustible, km_actual, nro_factura, observacion, semana, anho, cargado_por, creado_en
+                            """,
+                            (
+                                vehiculo_id,
+                                fecha,
+                                proveedor_id,
+                                litros,
+                                importe,
+                                precio_litro,
+                                tipo_combustible or None,
+                                km_actual,
+                                nro_factura,
+                                observacion,
+                                semana,
+                                anho,
+                                carga_id,
+                            ),
+                        )
+                    else:
+                        cur.execute(
+                            """
+                            INSERT INTO cargas_combustible(
+                                vehiculo_id, fecha, proveedor_id, litros, importe, precio_litro,
+                                tipo_combustible, km_actual, nro_factura, observacion, semana, anho, cargado_por
+                            )
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                            RETURNING id, fecha, vehiculo_id, proveedor_id, litros, importe, precio_litro,
+                                      tipo_combustible, km_actual, nro_factura, observacion, semana, anho, cargado_por, creado_en
+                            """,
+                            (
+                                vehiculo_id,
+                                fecha,
+                                proveedor_id,
+                                litros,
+                                importe,
+                                precio_litro,
+                                tipo_combustible or None,
+                                km_actual,
+                                nro_factura,
+                                observacion,
+                                semana,
+                                anho,
+                                str(cargado_por or "").strip() or None,
+                            ),
+                        )
                     row = cur.fetchone()
                     row["vehiculo_nombre"] = vehiculo["nombre"]
                     row["vehiculo_codigo"] = vehiculo["codigo"]
@@ -3824,33 +3879,48 @@ class DashboardHandler(BaseHTTPRequestHandler):
             return self._send_json({"error": str(exc)}, status=500)
 
     def _send_empty(self, status=204, extra_headers: list[tuple[str, str]] | None = None):
-        self.send_response(status)
-        self._headers()
-        for key, value in extra_headers or []:
-            self.send_header(key, value)
-        self.end_headers()
+        try:
+            self.send_response(status)
+            self._headers()
+            for key, value in extra_headers or []:
+                self.send_header(key, value)
+            self.end_headers()
+        except OSError as exc:
+            if _is_client_disconnect(exc):
+                return
+            raise
 
     def _send_json(self, payload, status=200, extra_headers: list[tuple[str, str]] | None = None):
         body = json.dumps(payload, default=_json_default).encode("utf-8")
-        self.send_response(status)
-        self._headers()
-        for key, value in extra_headers or []:
-            self.send_header(key, value)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
+        try:
+            self.send_response(status)
+            self._headers()
+            for key, value in extra_headers or []:
+                self.send_header(key, value)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        except OSError as exc:
+            if _is_client_disconnect(exc):
+                return
+            raise
 
     def _send_pdf(self, body: bytes, filename: str, status=200, extra_headers: list[tuple[str, str]] | None = None):
-        self.send_response(status)
-        self._headers()
-        for key, value in extra_headers or []:
-            self.send_header(key, value)
-        self.send_header("Content-Type", "application/pdf")
-        self.send_header("Content-Disposition", f'inline; filename="{filename}"')
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
+        try:
+            self.send_response(status)
+            self._headers()
+            for key, value in extra_headers or []:
+                self.send_header(key, value)
+            self.send_header("Content-Type", "application/pdf")
+            self.send_header("Content-Disposition", f'inline; filename="{filename}"')
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        except OSError as exc:
+            if _is_client_disconnect(exc):
+                return
+            raise
 
     def _read_json(self):
         length = int(self.headers.get("Content-Length") or 0)

@@ -1,0 +1,29 @@
+<main class="shell" [class.dark-mode]="darkMode">
+  <app-sidebar-nav
+    [vista]="vista"
+    [viewMenuOpen]="viewMenuOpen"
+    [darkMode]="darkMode"
+    [userInitials]="userInitials()"
+    [userDisplayName]="userDisplayName()"
+    [userRoleLabel]="userRoleLabel()"
+    [canViewDashboard]="canViewDashboard()"
+    [canManageComprasFaena]="canManageComprasFaena()"
+    [canViewResumenes]="canViewResumenes()"
+    [canManageDistribuciones]="canManageDistribuciones()"
+    [canManageFlota]="canManageFlota()"
+    [canManageRecepcion]="canManageRecepcion()"
+    [canManageUsers]="canManageUsers()"
+    [canViewAcuerdos]="canViewAcuerdos()"
+    [canViewContratos]="canViewContratos()"
+    [canViewArchivosDirectorio]="canViewArchivosDirectorio()"
+    (toggleMenu)="toggleViewMenu()"
+    (closeMenu)="closeViewMenu()"
+    (toggleTheme)="toggleDarkMode()"
+    (selectView)="cambiarVista($event)"
+    (logout)="logout()"
+  ></app-sidebar-nav>
+
+  <app-shell-topbar [vista]="vista"></app-shell-topbar>
+
+  <router-outlet *ngIf="vista === 'dashboard' || vista === 'resumenes' || vista === 'compras-faena' || vista === 'recepcion' || vista === 'distribuciones' || vista === 'usuarios' || vista === 'flota' || vista === 'acuerdos-comerciales' || vista === 'contratos' || vista === 'archivos-directorio'"></router-outlet>
+</main>

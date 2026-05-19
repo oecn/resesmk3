@@ -48,6 +48,11 @@ export const routes: Routes = [
     canActivate: [authGuard],
   },
   {
+    path: 'contratos',
+    loadComponent: () => import('./features/contratos/contratos.component').then(m => m.ContratosComponent),
+    canActivate: [authGuard],
+  },
+  {
     path: 'archivos-directorio',
     loadComponent: () => import('./features/archivos-directorio/archivos-directorio.component').then(m => m.ArchivosDirectorioComponent),
     canActivate: [authGuard],

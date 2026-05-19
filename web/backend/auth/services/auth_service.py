@@ -19,6 +19,7 @@ MODULES = [
     {"key": "distribuciones", "label": "Distribuciones"},
     {"key": "flota", "label": "Flota"},
     {"key": "acuerdos-comerciales", "label": "Acuerdos comerciales"},
+    {"key": "contratos", "label": "Contratos"},
     {"key": "archivos-directorio", "label": "Archivos de directorio"},
     {"key": "usuarios", "label": "Usuarios"},
 ]
@@ -33,6 +34,7 @@ DEFAULT_MODULES_BY_ROLE = {
         "distribuciones",
         "flota",
         "acuerdos-comerciales",
+        "contratos",
         "archivos-directorio",
     ],
     "recepcion": ["recepcion", "flota"],
