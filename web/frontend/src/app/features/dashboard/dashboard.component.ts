@@ -31,6 +31,9 @@ export class DashboardComponent implements OnInit {
   desde = '';
   hasta = '';
   periodoSeleccionado = 'mes-actual';
+  menudenciasPeriodo = 'semana-pasada';
+  menudenciasDesde = '';
+  menudenciasHasta = '';
   busqueda = '';
   kpiMenuOpen = false;
   optionalKpis: Array<{ key: OptionalKpiKey; label: string }> = [
@@ -74,6 +77,7 @@ export class DashboardComponent implements OnInit {
   ngOnInit(): void {
     this.cargarPreferenciasKpis();
     this.setPeriodoSeleccionado();
+    this.aplicarPeriodoMenudencias();
     this.cargar();
   }
 
@@ -104,6 +108,62 @@ export class DashboardComponent implements OnInit {
     this.hasta = '';
     this.busqueda = '';
     this.cargar();
+  }
+
+  aplicarPeriodoMenudencias(): void {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = today.getMonth();
+    let start: Date | null = null;
+    let end: Date | null = null;
+    switch (this.menudenciasPeriodo) {
+      case 'semana-pasada': {
+        const mondayThisWeek = new Date(year, month, today.getDate() - ((today.getDay() + 6) % 7));
+        start = new Date(mondayThisWeek.getFullYear(), mondayThisWeek.getMonth(), mondayThisWeek.getDate() - 7);
+        end = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 5);
+        break;
+      }
+      case 'este-mes':
+        start = new Date(year, month, 1);
+        end = new Date(year, month + 1, 0);
+        break;
+      case 'mes-anterior':
+        start = new Date(year, month - 1, 1);
+        end = new Date(year, month, 0);
+        break;
+    }
+    if (start && end) {
+      this.menudenciasDesde = this.toIsoDate(start);
+      this.menudenciasHasta = this.toIsoDate(end);
+    }
+  }
+
+  marcarMenudenciasPersonalizado(): void {
+    this.menudenciasPeriodo = 'personalizado';
+  }
+
+  imprimirMenudenciasPdf(): void {
+    if (!this.menudenciasDesde || !this.menudenciasHasta) {
+      this.error.set('Seleccione desde y hasta para imprimir menudencias.');
+      return;
+    }
+    this.loading.set(true);
+    this.error.set('');
+    this.dashboardService.getMenudenciasPdf(this.menudenciasDesde, this.menudenciasHasta).subscribe({
+      next: (blob) => {
+        const url = URL.createObjectURL(blob);
+        const opened = window.open(url, '_blank', 'noopener');
+        if (!opened) {
+          this.error.set('El navegador bloqueo la apertura del PDF. Permiti ventanas emergentes para este sitio.');
+        }
+        setTimeout(() => URL.revokeObjectURL(url), 60000);
+        this.loading.set(false);
+      },
+      error: (err) => {
+        this.error.set(err?.error?.error ?? 'No se pudo generar el PDF de menudencias.');
+        this.loading.set(false);
+      },
+    });
   }
 
   toggleKpi(key: OptionalKpiKey, visible: boolean): void {

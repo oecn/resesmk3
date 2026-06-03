@@ -8,7 +8,7 @@
   border: 1px solid #dbe4ef;
   border-radius: 8px;
   box-shadow: 0 16px 40px rgba(15, 23, 42, 0.08);
-  padding: 20px;
+  padding: 22px;
 }
 
 .panel-title {
@@ -31,26 +31,63 @@
   color: #64748b;
 }
 
+.section-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 0 0 22px;
+}
+
+.section-tabs button {
+  background: #e2e8f0;
+  color: #334155;
+  min-height: 42px;
+  padding: 10px 16px;
+}
+
+.section-tabs button.active {
+  background: #0f766e;
+  color: #fff;
+}
+
+.section-title {
+  align-items: center;
+  border-bottom: 1px solid #e2e8f0;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  padding-bottom: 12px;
+}
+
+.section-title span {
+  color: #64748b;
+}
+
 .form-grid {
   display: grid;
-  gap: 14px;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  align-items: start;
+  gap: 18px 16px;
+  grid-template-columns: repeat(3, minmax(220px, 1fr));
 }
 
 label {
   color: #475569;
   display: grid;
   font-weight: 800;
-  gap: 7px;
+  gap: 8px;
+  min-width: 0;
 }
 
 input,
+select,
 textarea {
   border: 1px solid #cbd5e1;
   border-radius: 8px;
   color: #0f172a;
   font: inherit;
-  padding: 10px 11px;
+  min-height: 42px;
+  padding: 10px 12px;
+  width: 100%;
 }
 
 textarea {
@@ -61,16 +98,45 @@ textarea {
   grid-column: span 2;
 }
 
+.form-section-title {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  display: grid;
+  gap: 4px;
+  grid-column: 1 / -1;
+  margin-top: 4px;
+  padding: 13px 14px;
+}
+
+.form-section-title strong {
+  color: #0f172a;
+}
+
+.form-section-title span {
+  color: #64748b;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
 .form-actions {
   align-items: end;
   display: flex;
   gap: 10px;
+  grid-column: 1 / -1;
+  justify-content: flex-end;
+  padding-top: 4px;
 }
 
 .expiry-form {
   align-content: center;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
   display: grid;
   gap: 7px;
+  min-height: 76px;
+  padding: 10px 12px;
 }
 
 .expiry-form span {
@@ -83,7 +149,47 @@ textarea {
   display: grid;
   gap: 12px;
   grid-template-columns: minmax(220px, 1fr) auto;
-  margin-bottom: 16px;
+  margin-bottom: 18px;
+}
+
+.columns-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 12px;
+}
+
+.columns-panel {
+  align-items: center;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  display: grid;
+  gap: 10px 14px;
+  grid-template-columns: repeat(2, minmax(180px, 1fr));
+  padding: 10px 12px;
+}
+
+.columns-modal {
+  max-width: 620px;
+}
+
+.columns-panel label {
+  align-items: center;
+  color: #475569;
+  display: inline-flex;
+  font-size: 0.82rem;
+  gap: 6px;
+  min-width: 0;
+}
+
+.columns-panel input {
+  min-height: 0;
+  padding: 0;
+  width: auto;
+}
+
+.columns-panel .unavailable {
+  opacity: 0.45;
 }
 
 button {
@@ -105,27 +211,31 @@ button.danger {
 }
 
 .table-wrap {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
   overflow: auto;
 }
 
 .contracts-table {
   border-collapse: collapse;
-  min-width: 1120px;
+  min-width: 980px;
   width: 100%;
 }
 
 .contracts-table th,
 .contracts-table td {
   border-bottom: 1px solid #e2e8f0;
-  padding: 10px;
+  padding: 12px;
   text-align: left;
   vertical-align: middle;
 }
 
 .contracts-table th {
+  background: #f8fafc;
   color: #64748b;
   font-size: 0.82rem;
   text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .text-cell {
@@ -202,6 +312,46 @@ button.danger {
   font-weight: 900;
   padding: 6px 10px;
   white-space: nowrap;
+}
+
+.city-pill {
+  border: 1px solid transparent;
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: 0.82rem;
+  font-weight: 900;
+  padding: 6px 10px;
+  white-space: nowrap;
+}
+
+.city-luque {
+  background: #fef3c7;
+  border-color: #facc15;
+  color: #854d0e;
+}
+
+.city-aregua {
+  background: #fee2e2;
+  border-color: #fca5a5;
+  color: #991b1b;
+}
+
+.city-itaugua {
+  background: #dbeafe;
+  border-color: #93c5fd;
+  color: #1e40af;
+}
+
+.city-limpio {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+  color: #475569;
+}
+
+.city-default {
+  background: #ecfeff;
+  border-color: #67e8f9;
+  color: #155e75;
 }
 
 .expiry-none {

@@ -137,8 +137,9 @@ export class CombustiblePanelComponent implements OnInit, OnChanges {
       nro_factura: this.combustibleFactura,
       observacion: this.combustibleObservacion,
     }).subscribe({
-      next: () => {
+      next: (saved) => {
         const editing = Boolean(this.combustibleEditId);
+        this.actualizarFilaCombustible(saved);
         this.limpiarFormularioCombustible();
         this.ok.set(editing ? 'Carga de combustible actualizada.' : 'Carga de combustible registrada.');
         this.loading.set(false);
@@ -150,6 +151,18 @@ export class CombustiblePanelComponent implements OnInit, OnChanges {
         this.loading.set(false);
       },
     });
+  }
+
+  actualizarFilaCombustible(saved: FlotaCombustibleRow): void {
+    const rows = this.flotaCombustible();
+    const index = rows.findIndex((item) => item.id === saved.id);
+    if (index >= 0) {
+      this.flotaCombustible.set(rows.map((item) => item.id === saved.id ? saved : item));
+      this.combustibleSelectedId = saved.id;
+      return;
+    }
+    this.flotaCombustible.set([saved, ...rows]);
+    this.combustibleSelectedId = saved.id;
   }
 
   editarCargaCombustible(row: FlotaCombustibleRow): void {

@@ -1,6 +1,11 @@
 ============================================================
-  COMO INICIAR EL SISTEMA
+  COMO INICIAR EL SISTEMA - RECES MK13
 ============================================================
+
+RUTA DEL PROYECTO
+-----------------
+C:\Users\osval\Desktop\dev\reces\resesmk13
+
 
 PASO 1 - Habilitar scripts en PowerShell (solo la primera vez)
 --------------------------------------------------------------
@@ -8,39 +13,78 @@ Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned -Force
 
 
 PASO 2 - Levantar el BACKEND (API Python)
-------------------------------------------
-cd C:\Users\osval\Desktop\dev\reces\resesmk13\web
-python run.py
+-----------------------------------------
+Abrir una terminal PowerShell y ejecutar:
 
-  -> Debe mostrar: Dashboard API read-only en http://0.0.0.0:8008
-  -> Dejar esta terminal abierta
+cd C:\Users\osval\Desktop\dev\reces\resesmk13
+python -B web\run.py
+
+Debe quedar abierto y mostrar algo como:
+Dashboard API read-only en http://0.0.0.0:8008
 
 
 PASO 3 - Levantar el FRONTEND (Angular)
------------------------------------------
-Abrir una SEGUNDA terminal y ejecutar:
+---------------------------------------
+Abrir una SEGUNDA terminal PowerShell y ejecutar:
 
 cd C:\Users\osval\Desktop\dev\reces\resesmk13\web\frontend
 npm start
 
-  -> Dejar esta terminal abierta
+Debe quedar abierto en:
+http://127.0.0.1:4200
 
 
 PASO 4 - Abrir en el navegador
---------------------------------
-Desde esta PC:        http://127.0.0.1:4200
-Desde la red local:   http://192.168.10.12:4200
+------------------------------
+Desde esta PC:
+http://127.0.0.1:4200
+
+Desde la red local:
+http://192.168.10.12:4200
+
+Backend API:
+http://192.168.10.12:8008/api
 
 
 ============================================================
-  NOTAS
+  SI ALGO NO ACTUALIZA EN PANTALLA
 ============================================================
 
-- Si es la primera vez, instalar dependencias del backend:
-  pip install -r C:\Users\osval\Desktop\dev\reces\resesmk13\web\backend\requirements.txt
+1 - Recargar fuerte el navegador:
+Ctrl + F5
 
-- Si es la primera vez, instalar dependencias del frontend:
-  cd C:\Users\osval\Desktop\dev\reces\resesmk13\web\frontend
-  npm install
+2 - Si sigue igual, cerrar el frontend viejo:
+
+$p = Get-NetTCPConnection -LocalPort 4200 -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique; if ($p) { Stop-Process -Id $p -Force }
+
+3 - Volver a iniciar frontend:
+
+cd C:\Users\osval\Desktop\dev\reces\resesmk13\web\frontend
+npm start
+
+
+============================================================
+  SI EL BACKEND QUEDA OCUPADO EN EL PUERTO 8008
+============================================================
+
+$p = Get-NetTCPConnection -LocalPort 8008 -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique; if ($p) { Stop-Process -Id $p -Force }
+
+Luego iniciar nuevamente:
+
+cd C:\Users\osval\Desktop\dev\reces\resesmk13
+python -B web\run.py
+
+
+============================================================
+  INSTALACION INICIAL
+============================================================
+
+Backend:
+cd C:\Users\osval\Desktop\dev\reces\resesmk13
+pip install -r web\backend\requirements.txt
+
+Frontend:
+cd C:\Users\osval\Desktop\dev\reces\resesmk13\web\frontend
+npm install
 
 ============================================================

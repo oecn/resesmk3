@@ -4,6 +4,7 @@ import { AppModuleKey, CurrentUser, UserRole } from './auth.models';
 const DEFAULT_MODULES_BY_ROLE: Record<UserRole, AppModuleKey[]> = {
   admin: [
     'dashboard',
+    'estadisticas',
     'compras-faena',
     'resumenes',
     'recepcion',
@@ -12,10 +13,13 @@ const DEFAULT_MODULES_BY_ROLE: Record<UserRole, AppModuleKey[]> = {
     'flota',
     'archivos-directorio',
     'acuerdos-comerciales',
+    'acuerdos-estadisticas',
+    'acuerdos-valores',
     'contratos',
   ],
   supervisor: [
     'dashboard',
+    'estadisticas',
     'compras-faena',
     'resumenes',
     'recepcion',
@@ -23,6 +27,8 @@ const DEFAULT_MODULES_BY_ROLE: Record<UserRole, AppModuleKey[]> = {
     'flota',
     'archivos-directorio',
     'acuerdos-comerciales',
+    'acuerdos-estadisticas',
+    'acuerdos-valores',
     'contratos',
   ],
   recepcion: ['recepcion', 'flota'],
@@ -39,6 +45,9 @@ export class PermissionsService {
   canAccessModule(user: CurrentUser | null | undefined, module: AppModuleKey): boolean {
     if (!user) {
       return false;
+    }
+    if (module === 'estadisticas' && ['admin', 'supervisor'].includes(user.rol)) {
+      return true;
     }
     if (Array.isArray(user.modulos_permitidos)) {
       return user.modulos_permitidos.includes(module);

@@ -141,6 +141,7 @@
                       <tr
                         *ngFor="let row of dist.distribuciones"
                         [class.selected]="row.id === distribucionDetalleId"
+                        [class.zero-kg-row]="row.kg == 0"
                         (click)="seleccionarDistribucionDetalle(row)"
                       >
                         <td>{{ row.id }}</td>
@@ -179,35 +180,6 @@
               </fieldset>
             </article>
 
-            <section class="subpanel local-detail compact">
-              <div class="panel-title tight">
-                <h2>Contenido por sucursal</h2>
-                <span>LUQUE / AREGUA / ITAUGUA</span>
-              </div>
-
-              <div class="local-detail-grid">
-                <article class="local-detail-card" *ngFor="let local of localesDistribucion">
-                  <div class="local-detail-head">
-                    <h2>{{ local }}</h2>
-                    <span>{{ (resumenDistribucionLocal(local).cabezas | fmtNumber) }} reces | {{ (resumenDistribucionLocal(local).kg | fmtNumber:2) }} kg</span>
-                  </div>
-
-                  <p *ngIf="distribucionesPorLocalDetalle(local).length === 0" class="empty-local">Sin distribuciones.</p>
-
-                  <div class="local-distribution-row compact" *ngFor="let row of distribucionesPorLocalDetalle(local)">
-                    <div>
-                      <strong>{{ row.fecha }}</strong>
-                      <span>{{ (row.kg | fmtNumber:2) }} kg <span *ngIf="row.kg == 0" class="flag zero-kg-flag" title="Kg en cero"></span> | {{ (row.cabezas | fmtNumber) }} reces | Dif. {{ (row.diferencia_kg | fmtNumber:2) }}</span>
-                      <small class="note-preview local-note-preview">{{ row.nota || 'Sin nota' }}</small>
-                    </div>
-                    <div class="actions-cell">
-                      <button type="button" class="warning-action mini-button" (click)="abrirEditorDistribucion(row)" [disabled]="distribucionLoading()">Editar</button>
-                      <button type="button" class="danger mini-button" (click)="eliminarDistribucion(row)" [disabled]="distribucionLoading()">Eliminar</button>
-                    </div>
-                  </div>
-                </article>
-              </div>
-            </section>
           </div>
         </div>
       </ng-container>

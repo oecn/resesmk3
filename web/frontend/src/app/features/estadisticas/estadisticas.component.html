@@ -1,0 +1,222 @@
+<section class="topbar">
+  <div>
+    <p class="eyebrow">Gestion</p>
+    <h1>Estadisticas</h1>
+    <p class="subtitle">Indicadores ejecutivos, eficiencia por proveedor, sucursal y alertas operativas.</p>
+  </div>
+</section>
+
+<section class="estadisticas-page">
+  <p *ngIf="error()" class="alert">{{ error() }}</p>
+  <p *ngIf="loading()" class="muted">Cargando estadisticas...</p>
+
+  <section class="panel">
+    <div class="filters-row">
+      <label>
+        Desde
+        <input type="date" name="estadisticasDesde" [(ngModel)]="desde">
+      </label>
+      <label>
+        Hasta
+        <input type="date" name="estadisticasHasta" [(ngModel)]="hasta">
+      </label>
+      <button type="button" (click)="cargarEstadisticas()" [disabled]="loading()">Aplicar</button>
+      <button type="button" class="secondary" (click)="setMesActual(); cargarEstadisticas()" [disabled]="loading()">Mes actual</button>
+      <button type="button" class="secondary" (click)="setMesAnterior(); cargarEstadisticas()" [disabled]="loading()">Mes anterior</button>
+      <button type="button" class="secondary" (click)="limpiarPeriodo()" [disabled]="loading()">Todo</button>
+    </div>
+  </section>
+
+  <ng-container *ngIf="data() as stats">
+    <section class="kpi-grid">
+      <article class="kpi-card">
+        <span>Monto invertido</span>
+        <strong>{{ stats.kpis.monto_total | fmtMoney }}</strong>
+        <small>{{ stats.kpis.lotes | fmtNumber }} lotes</small>
+      </article>
+      <article class="kpi-card">
+        <span>Costo kg promedio</span>
+        <strong>{{ stats.kpis.costo_kg_promedio | fmtMoney }}</strong>
+        <small>{{ stats.kpis.kg_distribuidos | fmtNumber:2 }} kg distribuidos</small>
+      </article>
+      <article class="kpi-card">
+        <span>Rendimiento promedio</span>
+        <strong>{{ stats.kpis.rendimiento_promedio | fmtNumber:2 }}%</strong>
+        <small>{{ stats.kpis.kg_compra | fmtNumber:2 }} kg compra</small>
+      </article>
+      <article class="kpi-card">
+        <span>Distribucion de faena</span>
+        <strong>{{ distribucionPct() | fmtNumber:2 }}%</strong>
+        <small>{{ stats.kpis.reces_distribuidas | fmtNumber }} / {{ stats.kpis.reces_faenadas | fmtNumber }} reces</small>
+      </article>
+      <article class="kpi-card warning-card">
+        <span>Lotes pendientes</span>
+        <strong>{{ stats.kpis.lotes_pendientes | fmtNumber }}</strong>
+        <small>{{ stats.kpis.lotes_completados | fmtNumber }} completados</small>
+      </article>
+      <article class="kpi-card danger-card">
+        <span>Alertas kg cero</span>
+        <strong>{{ stats.kpis.lotes_kg_cero | fmtNumber }}</strong>
+        <small>lotes distribuidos sin kg</small>
+      </article>
+    </section>
+
+    <section class="panel">
+      <div class="panel-title">
+        <h2>Alertas de gestion</h2>
+        <span>Costo/kg, rendimiento, concentracion y pendientes antiguos</span>
+      </div>
+      <div class="alerts-grid" *ngIf="stats.alertasGestion.length; else sinAlertasGestion">
+        <article *ngFor="let alerta of stats.alertasGestion" [class]="alertaClass(alerta.severidad)">
+          <div>
+            <span>{{ alerta.severidad }}</span>
+            <strong>{{ alerta.titulo }}</strong>
+            <small>{{ alerta.detalle }}</small>
+          </div>
+          <b>{{ alertaValor(alerta.tipo, alerta.valor) }}</b>
+        </article>
+      </div>
+      <ng-template #sinAlertasGestion>
+        <p class="muted">Sin alertas de gestion para el periodo.</p>
+      </ng-template>
+    </section>
+
+    <section class="stats-grid">
+      <article class="panel">
+        <div class="panel-title">
+          <h2>Eficiencia por proveedor</h2>
+          <span>Kg, costo y rendimiento</span>
+        </div>
+        <div class="bar-list">
+          <div class="bar-row" *ngFor="let row of stats.proveedores">
+            <div class="bar-label">
+              <strong>{{ row.empresa }}</strong>
+              <span>{{ row.kg_distribuidos | fmtNumber:2 }} kg | {{ row.costo_kg | fmtMoney }} | Rend. {{ row.rendimiento | fmtNumber:2 }}%</span>
+            </div>
+            <div class="bar-track"><span [style.width]="barWidth(row.kg_distribuidos, maxProveedorKg())"></span></div>
+          </div>
+        </div>
+      </article>
+
+      <article class="panel">
+        <div class="panel-title">
+          <h2>Distribucion por sucursal</h2>
+          <span>Ranking por desviacion kg</span>
+        </div>
+        <div class="bar-list">
+          <div class="bar-row" *ngFor="let row of stats.sucursales">
+            <div class="bar-label">
+              <strong>{{ row.local }}</strong>
+              <span>{{ row.kg | fmtNumber:2 }} kg | Dif. {{ row.dif_kg | fmtNumber:2 }} | Desvio {{ row.desvio_pct | fmtNumber:2 }}%</span>
+            </div>
+            <div class="bar-track"><span [style.width]="barWidth(row.kg, maxSucursalKg())"></span></div>
+            <small *ngIf="row.filas_kg_cero">Kg cero: {{ row.filas_kg_cero | fmtNumber }}</small>
+          </div>
+        </div>
+        <div class="table-wrap deviation-table-wrap">
+          <table class="stats-table">
+            <thead>
+              <tr><th>Sucursal</th><th>Kg recibido</th><th>Dif. kg</th><th>Desvio %</th><th>Reces</th></tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let row of stats.sucursales">
+                <td>{{ row.local }}</td>
+                <td>{{ row.kg | fmtNumber:2 }}</td>
+                <td>{{ row.dif_kg | fmtNumber:2 }}</td>
+                <td>{{ row.desvio_pct | fmtNumber:2 }}%</td>
+                <td>{{ row.reces | fmtNumber }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </article>
+    </section>
+
+    <section class="stats-grid">
+      <article class="panel">
+        <div class="panel-title">
+          <h2>Concentracion por proveedor</h2>
+          <span>Participacion sobre kg distribuidos</span>
+        </div>
+        <div class="bar-list">
+          <div class="bar-row" *ngFor="let row of stats.proveedores">
+            <div class="bar-label">
+              <strong>{{ row.empresa }}</strong>
+              <span>{{ row.participacion_pct | fmtNumber:2 }}% | {{ row.kg_distribuidos | fmtNumber:2 }} kg</span>
+            </div>
+            <div class="bar-track concentration-track"><span [style.width]="barWidth(row.participacion_pct, 100)"></span></div>
+          </div>
+        </div>
+      </article>
+
+      <article class="panel">
+        <div class="panel-title">
+          <h2>Concentracion por sucursal</h2>
+          <span>Dependencia del volumen operativo</span>
+        </div>
+        <div class="bar-list">
+          <div class="bar-row" *ngFor="let row of stats.sucursales">
+            <div class="bar-label">
+              <strong>{{ row.local }}</strong>
+              <span>{{ row.participacion_pct | fmtNumber:2 }}% | {{ row.kg | fmtNumber:2 }} kg</span>
+            </div>
+            <div class="bar-track concentration-track"><span [style.width]="barWidth(row.participacion_pct, 100)"></span></div>
+          </div>
+        </div>
+      </article>
+    </section>
+
+    <section class="stats-grid">
+      <article class="panel">
+        <div class="panel-title">
+          <h2>Mejores lotes</h2>
+          <span>Por rendimiento</span>
+        </div>
+        <div class="table-wrap">
+          <table class="stats-table">
+            <thead>
+              <tr><th>Lote</th><th>Empresa</th><th>Fecha</th><th>Kg</th><th>Costo kg</th><th>Rend.</th></tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let lote of stats.mejoresLotes">
+                <td>{{ lote.lote }}</td>
+                <td>{{ lote.empresa }}</td>
+                <td>{{ lote.fecha }}</td>
+                <td>{{ lote.kg | fmtNumber:2 }}</td>
+                <td>{{ lote.costokg | fmtMoney }}</td>
+                <td>{{ lote.rend_pct | fmtNumber:2 }}%</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </article>
+
+      <article class="panel">
+        <div class="panel-title">
+          <h2>Alertas operativas</h2>
+          <span>Lotes con saldo de faena pendiente</span>
+        </div>
+        <div class="table-wrap">
+          <table class="stats-table">
+            <thead>
+              <tr><th>Lote</th><th>Empresa</th><th>Fecha</th><th>Faen.</th><th>Dist.</th><th>Pend.</th></tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let lote of stats.alertas">
+                <td>{{ lote.lote }}</td>
+                <td>{{ lote.empresa }}</td>
+                <td>{{ lote.fecha }}</td>
+                <td>{{ lote.faenado | fmtNumber }}</td>
+                <td>{{ lote.distribuido | fmtNumber }}</td>
+                <td>{{ (lote.reces_pendientes || 0) | fmtNumber }}</td>
+              </tr>
+              <tr *ngIf="!stats.alertas.length">
+                <td colspan="6" class="empty-cell">Sin alertas para el periodo.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </article>
+    </section>
+  </ng-container>
+</section>

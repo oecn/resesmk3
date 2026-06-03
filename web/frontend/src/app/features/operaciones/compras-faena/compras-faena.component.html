@@ -98,6 +98,7 @@
           </label>
           <div class="distribution-actions-row compra-actions">
             <button type="button" class="warning-action" (click)="abrirEditarCompra()" [disabled]="compraLoading() || !compraLoteId">Editar compra</button>
+            <button type="button" class="danger" (click)="eliminarCompraLote()" [disabled]="compraLoading() || !compraLoteId || (compraLoteSeleccionado()?.faenado || 0) > 0">Eliminar lote</button>
             <button type="button" (click)="abrirRegistrarFaena()" [disabled]="compraLoading() || !compraLoteId">Registrar faena</button>
           </div>
         </div>
@@ -136,6 +137,11 @@
               </tr>
             </tbody>
           </table>
+        </div>
+        <div class="load-more-row" *ngIf="compraLotesFiltrados().length < compraTotalFiltrado()">
+          <span>Mostrando {{ compraLotesFiltrados().length }} de {{ compraTotalFiltrado() }} lotes</span>
+          <button type="button" class="secondary" (click)="cargarDiezMasCompras()">Cargar 10 mas</button>
+          <button type="button" class="secondary" (click)="cargarTodasCompras()">Cargar todos</button>
         </div>
 
         <section class="panel-grid compras-bottom-grid">

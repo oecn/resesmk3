@@ -10,7 +10,10 @@ import {
   AcuerdosCobranzasResponse,
   AcuerdosCobranzasAnualResponse,
   AcuerdosComercialesResponse,
+  AcuerdosEstadisticasResponse,
   AcuerdosUbicacionesImportResponse,
+  MapaUbicacionValorResponse,
+  MapaUbicacionesResponse,
   ProveedorComercial,
   ProveedorComercialPayload,
   ProveedoresComercialesResponse,
@@ -26,6 +29,14 @@ export class AcuerdosComercialesService {
 
   saveAcuerdo(payload: AcuerdoComercialPayload): Observable<AcuerdoComercial> {
     return this.api.post<AcuerdoComercial>('/acuerdos-comerciales', payload);
+  }
+
+  descartarNegociacion(acuerdoId: number): Observable<{ ok: boolean; id: number }> {
+    return this.api.delete<{ ok: boolean; id: number }>('/acuerdos-comerciales', { acuerdo_id: acuerdoId });
+  }
+
+  eliminarAcuerdo(acuerdoId: number, password: string): Observable<{ ok: boolean; id: number }> {
+    return this.api.post<{ ok: boolean; id: number }>('/acuerdos-comerciales/eliminar', { id: acuerdoId, password });
   }
 
   listHistorial(acuerdoId: number): Observable<AcuerdoHistorialResponse> {
@@ -44,12 +55,24 @@ export class AcuerdosComercialesService {
     return this.api.get<AcuerdosCobranzasAnualResponse>('/acuerdos-comerciales/cobranzas/anual', { anho });
   }
 
+  getEstadisticas(mes: number, anho: number): Observable<AcuerdosEstadisticasResponse> {
+    return this.api.get<AcuerdosEstadisticasResponse>('/acuerdos-comerciales/estadisticas', { mes, anho });
+  }
+
   saveCobranza(payload: AcuerdoCobranzaPayload): Observable<AcuerdoCobranza> {
     return this.api.post<AcuerdoCobranza>('/acuerdos-comerciales/cobranzas', payload);
   }
 
   listProveedores(search = ''): Observable<ProveedoresComercialesResponse> {
     return this.api.get<ProveedoresComercialesResponse>('/acuerdos-comerciales/proveedores', { search });
+  }
+
+  listMapaUbicaciones(sucursal: string): Observable<MapaUbicacionesResponse> {
+    return this.api.get<MapaUbicacionesResponse>('/acuerdos-comerciales/mapa/ubicaciones', { sucursal });
+  }
+
+  saveMapaUbicacionValor(payload: { sucursal: string; codigo: string; valor_gs: number | string; detalle?: string | null }): Observable<MapaUbicacionValorResponse> {
+    return this.api.post<MapaUbicacionValorResponse>('/acuerdos-comerciales/mapa/ubicaciones/valor', payload);
   }
 
   saveProveedor(payload: ProveedorComercialPayload): Observable<ProveedorComercial> {

@@ -41,7 +41,7 @@
       <article *ngFor="let mes of resumen.meses">
         <span>{{ mesNombre(mes.mes) }}</span>
         <strong>{{ mes.porcentaje_facturas | number:'1.0-1' }}%</strong>
-        <small>{{ mes.cobradas }}/{{ mes.facturas }} proveedores</small>
+        <small>{{ mes.cobradas }}/{{ mes.facturas }} facturaciones</small>
         <em>{{ money(mes.total_cobrado) }} / {{ money(mes.total_facturado) }}</em>
       </article>
     </div>
@@ -72,60 +72,110 @@
   </section>
 
   <ng-container *ngIf="vista === 'mensual'">
-    <div class="cobranzas-list" *ngIf="items().length; else emptyCobranzas">
-      <article class="cobranza-item" *ngFor="let item of items()">
-      <div class="cobranza-heading">
-        <div>
-          <strong>{{ item.proveedor_nombre }}</strong>
-          <span>{{ item.titulo }}</span>
+    <div class="cobranzas-list" *ngIf="cobranzaGrupos().length; else emptyCobranzas">
+      <article class="cobranza-item" *ngFor="let grupo of cobranzaGrupos()" [ngClass]="grupoStatusClass(grupo)">
+        <div class="cobranza-heading cobranza-heading-compact">
+          <div>
+            <strong>{{ grupo.proveedor_nombre }}</strong>
+            <span>{{ grupo.titulo }}</span>
+          </div>
+          <div class="cobranza-status-summary">
+            <span class="status-pill" [ngClass]="grupoStatusClass(grupo)">
+              {{ grupoStatus(grupo) }} · {{ grupoCobradas(grupo) }}/2 cobrados
+            </span>
+            <span class="invoice-summary">Total: {{ money(grupoMonto(grupo)) }}</span>
+            <button type="button" class="secondary mini-button toggle-group-button" (click)="toggleGrupo(grupo)">
+              {{ isGrupoExpanded(grupo) ? 'Ocultar detalle' : 'Ver detalle' }}
+            </button>
+          </div>
         </div>
-        <div class="cobranza-summary-actions">
-          <span class="invoice-summary">{{ item.numero_factura || 'Sin factura' }} · {{ money(item.monto_factura) }}</span>
-          <span class="status-pill" [class.paid]="item.cobrado">{{ item.cobrado ? 'Cobrado' : 'Pendiente' }}</span>
-          <button type="button" class="secondary mini-button" (click)="toggleDetalle(item.acuerdo_id)">
-            {{ isExpanded(item.acuerdo_id) ? 'Ocultar cobro' : 'Cargar cobro' }}
+
+        <div class="concept-list" *ngIf="!grupo.ambos && isGrupoExpanded(grupo)">
+          <div class="concept-row" *ngIf="grupo.alquiler as alquiler">
+            <strong>Alquiler</strong>
+            <span>{{ conceptoFacturaLabel(alquiler) }}</span>
+            <span>{{ money(alquiler.monto_factura) }}</span>
+            <em [class.paid]="alquiler.cobrado">{{ alquiler.cobrado ? 'Cobrado' : 'Pendiente' }}</em>
+            <button type="button" class="secondary mini-button" (click)="toggleDetalle(alquiler)">
+              {{ isExpanded(alquiler) ? 'Ocultar' : 'Cargar' }}
+            </button>
+          </div>
+          <div class="concept-row" *ngIf="grupo.porcentaje as porcentaje">
+            <strong>% venta</strong>
+            <span>{{ conceptoFacturaLabel(porcentaje) }}</span>
+            <span>{{ money(porcentaje.monto_factura) }}</span>
+            <em [class.paid]="porcentaje.cobrado">{{ porcentaje.cobrado ? 'Cobrado' : 'Pendiente' }}</em>
+            <button type="button" class="secondary mini-button" (click)="toggleDetalle(porcentaje)">
+              {{ isExpanded(porcentaje) ? 'Ocultar' : 'Cargar' }}
+            </button>
+          </div>
+          <div class="concept-actions">
+            <button type="button" class="secondary mini-button" (click)="marcarCobradoAmbos(grupoBaseItem(grupo))">
+              Cobrado ambos
+            </button>
+          </div>
+        </div>
+
+        <div class="concept-list" *ngIf="grupo.ambos && isGrupoExpanded(grupo)">
+          <ng-container *ngIf="grupo.ambos as ambos">
+          <div class="concept-row">
+            <strong>Ambos</strong>
+            <span>{{ conceptoFacturaLabel(ambos) }}</span>
+            <span>{{ money(ambos.monto_factura) }}</span>
+            <em [class.paid]="ambos.cobrado">{{ ambos.cobrado ? 'Cobrado' : 'Pendiente' }}</em>
+            <button type="button" class="secondary mini-button" (click)="toggleDetalle(ambos)">
+              {{ isExpanded(ambos) ? 'Ocultar' : 'Editar' }}
+            </button>
+          </div>
+          </ng-container>
+        </div>
+
+        <ng-container *ngFor="let item of [grupo.ambos, grupo.alquiler, grupo.porcentaje]">
+        <div class="form-grid cobranza-grid" *ngIf="item && isExpanded(item)">
+          <label>
+            Tipo facturacion
+            <select [(ngModel)]="item.tipo_facturacion" [name]="'tipo-facturacion-' + inputKey(item)">
+              <option *ngFor="let tipo of tiposFacturacion" [value]="tipo.value">{{ tipo.label }}</option>
+            </select>
+          </label>
+          <label>
+            Numero factura
+            <input type="text" [(ngModel)]="item.numero_factura" [name]="'factura-' + inputKey(item)" placeholder="001-001-0001234">
+          </label>
+          <label>
+            Monto
+            <input type="number" min="0" step="1" [(ngModel)]="item.monto_factura" [name]="'monto-' + inputKey(item)">
+          </label>
+          <label>
+            Fecha factura
+            <input type="date" [(ngModel)]="item.fecha_factura" [name]="'fecha-factura-' + inputKey(item)">
+          </label>
+          <label class="checkbox-field">
+            <input type="checkbox" [(ngModel)]="item.cobrado" [name]="'cobrado-' + inputKey(item)" (ngModelChange)="toggleCobrado(item)">
+            Cobrado
+          </label>
+          <label>
+            Fecha cobro
+            <input type="date" [(ngModel)]="item.fecha_cobro" [name]="'fecha-cobro-' + inputKey(item)" [disabled]="!item.cobrado">
+          </label>
+          <label>
+            Forma de cobro
+            <select [(ngModel)]="item.forma_cobro" [name]="'forma-cobro-' + inputKey(item)">
+              <option *ngFor="let forma of formasCobro" [value]="forma.value">{{ forma.label }}</option>
+            </select>
+          </label>
+          <label class="wide">
+            Observaciones
+            <input type="text" [(ngModel)]="item.observaciones" [name]="'obs-' + inputKey(item)" placeholder="Notas de cobranza">
+          </label>
+        </div>
+
+        <div class="form-actions" *ngIf="item && isExpanded(item)">
+          <button type="button" (click)="guardarCobranza(item)" [disabled]="savingId() === rowKey(item)">
+            {{ savingId() === rowKey(item) ? 'Guardando...' : 'Guardar cobranza' }}
           </button>
         </div>
-      </div>
-
-      <div class="form-grid cobranza-grid" *ngIf="isExpanded(item.acuerdo_id)">
-        <label>
-          Numero factura
-          <input type="text" [(ngModel)]="item.numero_factura" [name]="'factura-' + item.acuerdo_id" placeholder="001-001-0001234">
-        </label>
-        <label>
-          Monto
-          <input type="number" min="0" step="1" [(ngModel)]="item.monto_factura" [name]="'monto-' + item.acuerdo_id">
-        </label>
-        <label>
-          Fecha factura
-          <input type="date" [(ngModel)]="item.fecha_factura" [name]="'fecha-factura-' + item.acuerdo_id">
-        </label>
-        <label class="checkbox-field">
-          <input type="checkbox" [(ngModel)]="item.cobrado" [name]="'cobrado-' + item.acuerdo_id" (ngModelChange)="toggleCobrado(item)">
-          Cobrado
-        </label>
-        <label>
-          Fecha cobro
-          <input type="date" [(ngModel)]="item.fecha_cobro" [name]="'fecha-cobro-' + item.acuerdo_id" [disabled]="!item.cobrado">
-        </label>
-        <label>
-          Forma de cobro
-          <select [(ngModel)]="item.forma_cobro" [name]="'forma-cobro-' + item.acuerdo_id">
-            <option *ngFor="let forma of formasCobro" [value]="forma.value">{{ forma.label }}</option>
-          </select>
-        </label>
-        <label class="wide">
-          Observaciones
-          <input type="text" [(ngModel)]="item.observaciones" [name]="'obs-' + item.acuerdo_id" placeholder="Notas de cobranza">
-        </label>
-      </div>
-
-      <div class="form-actions" *ngIf="isExpanded(item.acuerdo_id)">
-        <button type="button" (click)="guardarCobranza(item)" [disabled]="savingId() === item.acuerdo_id">
-          {{ savingId() === item.acuerdo_id ? 'Guardando...' : 'Guardar cobranza' }}
-        </button>
-      </div>
+        </ng-container>
       </article>
     </div>
 

@@ -98,6 +98,10 @@ button.secondary {
   grid-template-columns: 0.9fr 1.1fr;
 }
 
+.menudencias-report-panel {
+  grid-column: 1 / -1;
+}
+
 .kpi-grid {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }

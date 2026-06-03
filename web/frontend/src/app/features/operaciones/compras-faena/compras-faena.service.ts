@@ -23,6 +23,10 @@ export class ComprasFaenaService {
     return this.api.post<CompraFaenaLote>('/compras-faena/lotes', payload);
   }
 
+  deleteCompraLote(payload: { id: number }): Observable<{ ok: boolean; lote_id: number; lote: string }> {
+    return this.api.post<{ ok: boolean; lote_id: number; lote: string }>('/compras-faena/lotes/eliminar', payload);
+  }
+
   addFaena(payload: {
     lote_id: number;
     fecha: string;

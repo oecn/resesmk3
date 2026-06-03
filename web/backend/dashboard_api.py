@@ -331,8 +331,18 @@ class DashboardRepository:
 
     def _menudencias_union_sql(self):
         return """
+            SELECT 'Aregua' AS sucursal, fecha, producto, kg, unidades
+            FROM menudencias_aregua
+            UNION ALL
+            SELECT 'Luque' AS sucursal, fecha, producto, kg, unidades
+            FROM menudencias_luque
+            UNION ALL
+            SELECT 'Itaugua' AS sucursal, fecha, producto, kg, unidades
+            FROM menudencias_itaugua
+            UNION ALL
             SELECT sucursal, fecha, producto, kg, unidades
             FROM menudencias
+            WHERE legacy_id IS NULL
         """
 
     def _costo_kg_default_ultimos_completados(self, cur):
@@ -587,6 +597,147 @@ class DashboardRepository:
             "menudenciasPorProductoSucursal": menudencias_por_producto_sucursal,
             "lotes": lotes,
         }
+
+    def build_menudencias_pdf(self, desde=None, hasta=None, generated_by=None):
+        if SimpleDocTemplate is None:
+            raise RuntimeError("ReportLab no esta instalado. Instale reportlab para generar PDF.")
+        if not desde or not hasta:
+            today = date.today()
+            monday_this_week = today - timedelta(days=today.weekday())
+            desde = monday_this_week - timedelta(days=7)
+            hasta = desde + timedelta(days=5)
+
+        with self._connect(readonly=True) as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute(
+                    f"""
+                    SELECT sucursal,
+                           COALESCE(SUM(kg), 0)::numeric AS kg,
+                           COALESCE(SUM(unidades), 0)::int AS unidades,
+                           COUNT(*)::int AS filas
+                    FROM ({self._menudencias_union_sql()}) m
+                    WHERE fecha >= %s AND fecha <= %s
+                    GROUP BY sucursal
+                    ORDER BY kg DESC, sucursal
+                    """,
+                    (desde, hasta),
+                )
+                por_sucursal = cur.fetchall()
+
+                cur.execute(
+                    f"""
+                    SELECT producto,
+                           COALESCE(SUM(kg), 0)::numeric AS kg,
+                           COALESCE(SUM(unidades), 0)::int AS unidades,
+                           CASE WHEN COALESCE(SUM(unidades), 0) > 0
+                               THEN ROUND((SUM(kg)::numeric / SUM(unidades)), 3)
+                               ELSE 0
+                           END AS kg_por_unidad
+                    FROM ({self._menudencias_union_sql()}) m
+                    WHERE fecha >= %s AND fecha <= %s
+                      AND TRIM(COALESCE(producto, '')) <> ''
+                    GROUP BY producto
+                    HAVING COALESCE(SUM(kg), 0) <> 0 OR COALESCE(SUM(unidades), 0) <> 0
+                    ORDER BY kg DESC, unidades DESC, producto
+                    """,
+                    (desde, hasta),
+                )
+                general = cur.fetchall()
+
+                cur.execute(
+                    f"""
+                    SELECT sucursal,
+                           producto,
+                           COALESCE(SUM(kg), 0)::numeric AS kg,
+                           COALESCE(SUM(unidades), 0)::int AS unidades,
+                           CASE WHEN COALESCE(SUM(unidades), 0) > 0
+                               THEN ROUND((SUM(kg)::numeric / SUM(unidades)), 3)
+                               ELSE 0
+                           END AS kg_por_unidad
+                    FROM ({self._menudencias_union_sql()}) m
+                    WHERE fecha >= %s AND fecha <= %s
+                      AND TRIM(COALESCE(producto, '')) <> ''
+                    GROUP BY sucursal, producto
+                    HAVING COALESCE(SUM(kg), 0) <> 0 OR COALESCE(SUM(unidades), 0) <> 0
+                    ORDER BY sucursal, kg DESC, unidades DESC, producto
+                    """,
+                    (desde, hasta),
+                )
+                detalle = cur.fetchall()
+
+        total_kg = sum(float(row.get("kg") or 0) for row in general)
+        total_unidades = sum(int(row.get("unidades") or 0) for row in general)
+        styles = getSampleStyleSheet()
+        title_style = ParagraphStyle("MenudenciasTitle", parent=styles["Title"], fontName="Courier-Bold", fontSize=14, leading=16, spaceAfter=4)
+        body_style = ParagraphStyle("MenudenciasBody", parent=styles["Normal"], fontName="Courier", fontSize=8, leading=9, spaceBefore=0, spaceAfter=2)
+        heading_style = ParagraphStyle("MenudenciasHeading", parent=styles["Heading3"], fontName="Courier-Bold", fontSize=9, leading=10, spaceBefore=6, spaceAfter=4)
+        kpi_value_style = ParagraphStyle("MenudenciasKpiValue", parent=styles["Normal"], fontName="Courier-Bold", fontSize=14, leading=15, alignment=1)
+
+        kpi_data = [[
+            self._pdf_wrap_cell_typewriter("Kg total", align="CENTER", font_size=8, leading=9),
+            self._pdf_wrap_cell_typewriter("Unidades", align="CENTER", font_size=8, leading=9),
+            self._pdf_wrap_cell_typewriter("Productos", align="CENTER", font_size=8, leading=9),
+            self._pdf_wrap_cell_typewriter("Sucursales", align="CENTER", font_size=8, leading=9),
+        ], [
+            Paragraph(_fmt_float(total_kg, 2), kpi_value_style),
+            Paragraph(_fmt_int(total_unidades), kpi_value_style),
+            Paragraph(_fmt_int(len(general)), kpi_value_style),
+            Paragraph(_fmt_int(len(por_sucursal)), kpi_value_style),
+        ]]
+        story = [
+            Paragraph("<b>Resumen de menudencias</b>", title_style),
+            Paragraph(
+                f"Periodo: <b>{desde}</b> al <b>{hasta}</b> | Generado: <b>{datetime.now().strftime('%Y-%m-%d %H:%M')}</b> | Usuario: <b>{escape(str(generated_by or 'Sistema'))}</b>",
+                body_style,
+            ),
+            Spacer(0, 6),
+            self._build_table_compact_typewriter(kpi_data, col_widths=[150, 150, 120, 120], header_fill=colors.HexColor("#FFF3CD")),
+            Spacer(0, 8),
+            Paragraph("<b>General por producto</b>", heading_style),
+        ]
+
+        data_general = [["Producto", "Kg", "Unidades", "Kg/unidad"]]
+        for row in general:
+            data_general.append([
+                self._pdf_wrap_cell_typewriter(row.get("producto") or "", align="LEFT", font_size=7, leading=8),
+                _fmt_float(row.get("kg"), 2),
+                _fmt_int(row.get("unidades")),
+                _fmt_float(row.get("kg_por_unidad"), 3),
+            ])
+        if len(data_general) == 1:
+            data_general.append(["Sin menudencias para el periodo", "0,00", "0", "0,000"])
+        story.append(self._build_table_compact_typewriter(data_general, col_widths=[340, 90, 90, 90]))
+        story.append(Spacer(0, 8))
+
+        story.append(Paragraph("<b>Totales por sucursal</b>", heading_style))
+        data_sucursal = [["Sucursal", "Kg", "Unidades", "Registros"]]
+        for row in por_sucursal:
+            data_sucursal.append([row.get("sucursal") or "", _fmt_float(row.get("kg"), 2), _fmt_int(row.get("unidades")), _fmt_int(row.get("filas"))])
+        if len(data_sucursal) == 1:
+            data_sucursal.append(["Sin datos", "0,00", "0", "0"])
+        story.append(self._build_table_compact_typewriter(data_sucursal, col_widths=[180, 120, 120, 100]))
+        story.append(Spacer(0, 8))
+
+        for sucursal in ("Aregua", "Luque", "Itaugua"):
+            rows = [row for row in detalle if row.get("sucursal") == sucursal]
+            story.append(Paragraph(f"<b>{sucursal}</b>", heading_style))
+            data_detalle = [["Producto", "Kg", "Unidades", "Kg/unidad"]]
+            for row in rows:
+                data_detalle.append([
+                    self._pdf_wrap_cell_typewriter(row.get("producto") or "", align="LEFT", font_size=7, leading=8),
+                    _fmt_float(row.get("kg"), 2),
+                    _fmt_int(row.get("unidades")),
+                    _fmt_float(row.get("kg_por_unidad"), 3),
+                ])
+            if len(data_detalle) == 1:
+                data_detalle.append(["Sin menudencias para el periodo", "0,00", "0", "0,000"])
+            story.append(self._build_table_compact_typewriter(data_detalle, col_widths=[340, 90, 90, 90]))
+            story.append(Spacer(0, 8))
+
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), leftMargin=18, rightMargin=18, topMargin=18, bottomMargin=18)
+        doc.build(story)
+        return buffer.getvalue(), f"Resumen_Menudencias_{desde}_{hasta}.pdf"
 
     def get_recepcion(self, slug, fecha=None):
         sucursal = _get_sucursal(slug)
@@ -2926,6 +3077,45 @@ class DashboardRepository:
                 conn.rollback()
                 raise
 
+    def delete_lote_compra(self, payload):
+        lote_id = _parse_int(payload.get("id") or payload.get("lote_id") or 0)
+        if lote_id <= 0:
+            raise ValueError("Falta el id del lote.")
+
+        with self._connect(readonly=False) as conn:
+            try:
+                with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                    cur.execute(
+                        """
+                        SELECT L.id,
+                               L.lote,
+                               COALESCE(SUM(F.cantidad), 0)::int AS faenado
+                        FROM lotes L
+                        LEFT JOIN faenas F ON F.lote_id = L.id
+                        WHERE L.id = %s
+                        GROUP BY L.id, L.lote
+                        """,
+                        (lote_id,),
+                    )
+                    lote = cur.fetchone()
+                    if not lote:
+                        raise ValueError("Lote no encontrado.")
+                    if int(lote["faenado"] or 0) > 0:
+                        raise ValueError("No se puede eliminar un lote que ya fue faenado.")
+
+                    cur.execute("DELETE FROM distribuciones WHERE lote_id = %s", (lote_id,))
+                    distribuciones = cur.rowcount
+                    cur.execute("DELETE FROM faenas WHERE lote_id = %s", (lote_id,))
+                    faenas = cur.rowcount
+                    cur.execute("DELETE FROM lotes WHERE id = %s", (lote_id,))
+                    if cur.rowcount != 1:
+                        raise ValueError("No se pudo eliminar el lote.")
+                conn.commit()
+                return {"ok": True, "lote_id": lote_id, "lote": lote["lote"], "faenas_eliminadas": faenas, "distribuciones_eliminadas": distribuciones}
+            except Exception:
+                conn.rollback()
+                raise
+
     def set_faena_total(self, payload):
         lote_id = int(payload.get("lote_id"))
         fecha = str(payload.get("fecha") or "").strip()
@@ -3068,6 +3258,7 @@ class DashboardRepository:
                     {"local": "AREGUA", "kg": 0, "cabezas": 0, "dif_kg": 0},
                     {"local": "ITAUGUA", "kg": 0, "cabezas": 0, "dif_kg": 0},
                 ]
+                distribuciones_detalle = []
                 if selected_ids:
                     cur.execute(
                         """
@@ -3087,12 +3278,319 @@ class DashboardRepository:
                         rows_by_local.get(row["local"], row)
                         for row in resumen_sucursales
                     ]
+                    cur.execute(
+                        """
+                        SELECT d.id,
+                               d.lote_id,
+                               l.lote,
+                               d.fecha,
+                               d.local,
+                               d.kg,
+                               d.cabezas,
+                               COALESCE(d.diferencia_kg, 0) AS diferencia_kg,
+                               COALESCE(d.nota, '') AS nota
+                        FROM distribuciones d
+                        JOIN lotes l ON l.id = d.lote_id
+                        WHERE d.lote_id = ANY(%s)
+                        ORDER BY l.fecha DESC, l.lote, d.fecha DESC, d.id DESC
+                        """,
+                        (selected_ids,),
+                    )
+                    distribuciones_detalle = cur.fetchall()
 
         return {
             "empresas": EMPRESAS,
             "lotes": lotes,
             "selected_lote_ids": selected_ids,
             "resumenSucursales": resumen_sucursales,
+            "distribucionesDetalle": distribuciones_detalle,
+        }
+
+    def get_estadisticas_data(self, desde=None, hasta=None):
+        with self._connect(readonly=True) as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                params = (desde, desde, hasta, hasta)
+                cur.execute(
+                    f"""
+                    WITH resumen_lotes AS ({self._resumen_lotes_cte()}),
+                    compras AS (
+                        SELECT COUNT(*)::int AS lotes,
+                               COALESCE(SUM(cantidad), 0)::int AS reces_compradas,
+                               COALESCE(SUM(peso_compra_kg), 0)::numeric AS kg_compra_periodo,
+                               COALESCE(SUM(monto), 0)::numeric AS monto_total
+                        FROM lotes
+                        WHERE (%s::date IS NULL OR fecha >= %s::date)
+                          AND (%s::date IS NULL OR fecha <= %s::date)
+                    ),
+                    faena_periodo AS (
+                        SELECT COALESCE(SUM(cantidad), 0)::int AS reces_faenadas
+                        FROM faenas
+                        WHERE (%s::date IS NULL OR fecha >= %s::date)
+                          AND (%s::date IS NULL OR fecha <= %s::date)
+                    ),
+                    dist_lotes AS (
+                        SELECT lote_id,
+                               COALESCE(SUM(kg), 0)::numeric AS kg_distribuidos,
+                               COALESCE(SUM(cabezas), 0)::int AS reces_distribuidas
+                        FROM distribuciones
+                        WHERE (%s::date IS NULL OR fecha >= %s::date)
+                          AND (%s::date IS NULL OR fecha <= %s::date)
+                        GROUP BY lote_id
+                    ),
+                    dist_periodo AS (
+                        SELECT COALESCE(SUM(kg), 0)::numeric AS kg_distribuidos,
+                               COALESCE(SUM(cabezas), 0)::int AS reces_distribuidas,
+                               COUNT(DISTINCT lote_id) FILTER (WHERE COALESCE(kg, 0) = 0 AND COALESCE(cabezas, 0) > 0)::int AS lotes_kg_cero
+                        FROM distribuciones
+                        WHERE (%s::date IS NULL OR fecha >= %s::date)
+                          AND (%s::date IS NULL OR fecha <= %s::date)
+                    ),
+                    dist_costos AS (
+                        SELECT COALESCE(SUM(dl.kg_distribuidos * rl.costokg), 0)::numeric AS costo_ponderado,
+                               COALESCE(SUM(dl.kg_distribuidos), 0)::numeric AS kg_distribuidos,
+                               COALESCE(SUM(rl.kgcompra), 0)::numeric AS kg_compra_operada
+                        FROM dist_lotes dl
+                        JOIN resumen_lotes rl ON rl.id = dl.lote_id
+                    ),
+                    pendientes AS (
+                        SELECT COUNT(*) FILTER (WHERE faenado > 0 AND distribuido < faenado)::int AS lotes_pendientes,
+                               COUNT(*) FILTER (WHERE faenado > 0 AND distribuido = faenado)::int AS lotes_completados
+                        FROM resumen_lotes
+                    )
+                    SELECT compras.lotes,
+                           compras.reces_compradas,
+                           faena_periodo.reces_faenadas,
+                           dist_periodo.reces_distribuidas,
+                           dist_periodo.kg_distribuidos,
+                           dist_costos.kg_compra_operada AS kg_compra,
+                           compras.monto_total,
+                           CASE WHEN dist_costos.kg_distribuidos > 0
+                                THEN ROUND((dist_costos.costo_ponderado / dist_costos.kg_distribuidos)::numeric, 2)
+                                ELSE 0 END AS costo_kg_promedio,
+                           CASE WHEN dist_costos.kg_compra_operada > 0
+                                THEN ROUND((dist_costos.kg_distribuidos / dist_costos.kg_compra_operada) * 100, 2)
+                                ELSE 0 END AS rendimiento_promedio,
+                           pendientes.lotes_pendientes,
+                           pendientes.lotes_completados,
+                           dist_periodo.lotes_kg_cero
+                    FROM compras, faena_periodo, dist_periodo, dist_costos, pendientes
+                    """,
+                    params + params + params + params,
+                )
+                kpis = cur.fetchone() or {}
+
+                cur.execute(
+                    f"""
+                    WITH resumen_lotes AS ({self._resumen_lotes_cte()}),
+                    dist_lotes AS (
+                        SELECT lote_id,
+                               COALESCE(SUM(kg), 0)::numeric AS kg_distribuidos,
+                               COALESCE(SUM(cabezas), 0)::int AS reces_distribuidas
+                        FROM distribuciones
+                        WHERE (%s::date IS NULL OR fecha >= %s::date)
+                          AND (%s::date IS NULL OR fecha <= %s::date)
+                        GROUP BY lote_id
+                    ),
+                    base AS (
+                        SELECT rl.*, dl.kg_distribuidos AS kg_periodo, dl.reces_distribuidas AS reces_periodo
+                        FROM dist_lotes dl
+                        JOIN resumen_lotes rl ON rl.id = dl.lote_id
+                    )
+                    SELECT empresa,
+                           COUNT(*)::int AS lotes,
+                           COALESCE(SUM(cantcompra), 0)::int AS reces_compradas,
+                           COALESCE(SUM(kg_periodo), 0)::numeric AS kg_distribuidos,
+                           COALESCE(SUM(kg_periodo * costokg), 0)::numeric AS monto_total,
+                           CASE WHEN COALESCE(SUM(kg_periodo), 0) > 0
+                                THEN ROUND((SUM(kg_periodo * costokg) / SUM(kg_periodo))::numeric, 2)
+                                ELSE 0 END AS costo_kg,
+                           CASE WHEN COALESCE(SUM(kgcompra), 0) > 0
+                                THEN ROUND((SUM(kg_periodo)::numeric / SUM(kgcompra)) * 100, 2)
+                                ELSE 0 END AS rendimiento,
+                           CASE WHEN COALESCE((SELECT SUM(kg_periodo) FROM base), 0) > 0
+                                THEN ROUND((SUM(kg_periodo)::numeric / (SELECT SUM(kg_periodo) FROM base)) * 100, 2)
+                                ELSE 0 END AS participacion_pct
+                    FROM base
+                    GROUP BY empresa
+                    ORDER BY kg_distribuidos DESC, monto_total DESC
+                    """,
+                    params,
+                )
+                proveedores = cur.fetchall()
+
+                cur.execute(
+                    """
+                    SELECT local,
+                           COALESCE(SUM(cabezas), 0)::int AS reces,
+                           COALESCE(SUM(kg), 0)::numeric AS kg,
+                           COALESCE(SUM(diferencia_kg), 0)::numeric AS dif_kg,
+                           COUNT(*) FILTER (WHERE COALESCE(kg, 0) = 0)::int AS filas_kg_cero,
+                           CASE WHEN COALESCE(SUM(kg), 0) > 0
+                                THEN ROUND((ABS(COALESCE(SUM(diferencia_kg), 0)) / SUM(kg))::numeric * 100, 2)
+                                ELSE 0 END AS desvio_pct,
+                           CASE WHEN COALESCE((SELECT SUM(kg)
+                                                FROM distribuciones
+                                                WHERE (%s::date IS NULL OR fecha >= %s::date)
+                                                  AND (%s::date IS NULL OR fecha <= %s::date)), 0) > 0
+                                THEN ROUND((SUM(kg)::numeric / (SELECT SUM(kg)
+                                                               FROM distribuciones
+                                                               WHERE (%s::date IS NULL OR fecha >= %s::date)
+                                                                 AND (%s::date IS NULL OR fecha <= %s::date))) * 100, 2)
+                                ELSE 0 END AS participacion_pct
+                    FROM distribuciones
+                    WHERE (%s::date IS NULL OR fecha >= %s::date)
+                      AND (%s::date IS NULL OR fecha <= %s::date)
+                    GROUP BY local
+                    ORDER BY ABS(COALESCE(SUM(diferencia_kg), 0)) DESC, local
+                    """,
+                    params + params + params,
+                )
+                sucursales = cur.fetchall()
+
+                cur.execute(
+                    f"""
+                    WITH resumen_lotes AS ({self._resumen_lotes_cte()}),
+                    dist_lotes AS (
+                        SELECT lote_id, COALESCE(SUM(kg), 0)::numeric AS kg_periodo
+                        FROM distribuciones
+                        WHERE (%s::date IS NULL OR fecha >= %s::date)
+                          AND (%s::date IS NULL OR fecha <= %s::date)
+                        GROUP BY lote_id
+                    )
+                    SELECT rl.id, rl.lote, rl.empresa, rl.fecha, rl.faenado, rl.distribuido,
+                           dl.kg_periodo AS kg, rl.kgcompra, rl.monto, rl.costokg, rl.rend_pct
+                    FROM dist_lotes dl
+                    JOIN resumen_lotes rl ON rl.id = dl.lote_id
+                    WHERE dl.kg_periodo > 0
+                    ORDER BY rl.rend_pct DESC, dl.kg_periodo DESC
+                    LIMIT 10
+                    """,
+                    params,
+                )
+                mejores_lotes = cur.fetchall()
+
+                cur.execute(
+                    f"""
+                    WITH resumen_lotes AS ({self._resumen_lotes_cte()})
+                    SELECT id, lote, empresa, fecha, faenado, distribuido, kg, kgcompra, monto, costokg, rend_pct,
+                           GREATEST(faenado - distribuido, 0)::int AS reces_pendientes
+                    FROM resumen_lotes
+                    WHERE faenado > 0 AND distribuido < faenado
+                    ORDER BY fecha DESC, reces_pendientes DESC
+                    LIMIT 10
+                    """,
+                )
+                alertas = cur.fetchall()
+
+                cur.execute(
+                    f"""
+                    WITH resumen_lotes AS ({self._resumen_lotes_cte()}),
+                    actual_dist AS (
+                        SELECT lote_id, COALESCE(SUM(kg), 0)::numeric AS kg_periodo
+                        FROM distribuciones
+                        WHERE (%s::date IS NULL OR fecha >= %s::date)
+                          AND (%s::date IS NULL OR fecha <= %s::date)
+                        GROUP BY lote_id
+                    ),
+                    actual AS (
+                        SELECT rl.*, ad.kg_periodo
+                        FROM actual_dist ad
+                        JOIN resumen_lotes rl ON rl.id = ad.lote_id
+                    ),
+                    anterior_dist AS (
+                        SELECT lote_id, COALESCE(SUM(kg), 0)::numeric AS kg_periodo
+                        FROM distribuciones
+                        WHERE fecha >= (COALESCE(%s::date, CURRENT_DATE) - INTERVAL '30 days')::date
+                          AND fecha < COALESCE(%s::date, CURRENT_DATE)
+                        GROUP BY lote_id
+                    ),
+                    anterior AS (
+                        SELECT rl.*, ad.kg_periodo
+                        FROM anterior_dist ad
+                        JOIN resumen_lotes rl ON rl.id = ad.lote_id
+                    ),
+                    costo AS (
+                        SELECT
+                            CASE WHEN COALESCE((SELECT SUM(kg_periodo) FROM actual), 0) > 0
+                                 THEN ((SELECT SUM(kg_periodo * costokg) FROM actual) / (SELECT SUM(kg_periodo) FROM actual))::numeric
+                                 ELSE 0 END AS costo_actual,
+                            CASE WHEN COALESCE((SELECT SUM(kg_periodo) FROM anterior), 0) > 0
+                                 THEN ((SELECT SUM(kg_periodo * costokg) FROM anterior) / (SELECT SUM(kg_periodo) FROM anterior))::numeric
+                                 ELSE 0 END AS costo_anterior
+                    ),
+                    rendimiento_bajo AS (
+                        SELECT COUNT(*)::int AS cantidad
+                        FROM actual
+                        WHERE kg > 0 AND rend_pct > 0 AND rend_pct < 50
+                    ),
+                    pendientes AS (
+                        SELECT COUNT(*)::int AS cantidad
+                        FROM resumen_lotes
+                        WHERE faenado > 0
+                          AND distribuido < faenado
+                          AND fecha <= CURRENT_DATE - INTERVAL '7 days'
+                    ),
+                    concentrado AS (
+                        SELECT empresa,
+                               CASE WHEN COALESCE((SELECT SUM(kg_periodo) FROM actual), 0) > 0
+                                    THEN ROUND((SUM(kg_periodo)::numeric / (SELECT SUM(kg_periodo) FROM actual)) * 100, 2)
+                                    ELSE 0 END AS participacion
+                        FROM actual
+                        GROUP BY empresa
+                        ORDER BY participacion DESC
+                        LIMIT 1
+                    )
+                    SELECT 'costo_kg_alto' AS tipo,
+                           CASE
+                               WHEN costo_anterior > 0 AND ((costo_actual - costo_anterior) / costo_anterior) * 100 >= 15 THEN 'alta'
+                               WHEN costo_anterior > 0 AND ((costo_actual - costo_anterior) / costo_anterior) * 100 >= 8 THEN 'media'
+                               ELSE 'baja'
+                           END AS severidad,
+                           'Costo/kg subio vs los 30 dias anteriores' AS titulo,
+                           CASE
+                               WHEN costo_anterior > 0 THEN ROUND(((costo_actual - costo_anterior) / costo_anterior) * 100, 2)
+                               ELSE 0
+                           END AS valor,
+                           'Variacion porcentual del costo/kg promedio.' AS detalle
+                    FROM costo
+                    WHERE costo_anterior > 0 AND costo_actual > costo_anterior
+                    UNION ALL
+                    SELECT 'rendimiento_bajo',
+                           CASE WHEN cantidad >= 5 THEN 'alta' WHEN cantidad >= 2 THEN 'media' ELSE 'baja' END,
+                           'Lotes con rendimiento bajo',
+                           cantidad,
+                           'Cantidad de lotes con rendimiento menor a 50%%.'
+                    FROM rendimiento_bajo
+                    WHERE cantidad > 0
+                    UNION ALL
+                    SELECT 'proveedor_concentrado',
+                           CASE WHEN participacion >= 60 THEN 'alta' WHEN participacion >= 45 THEN 'media' ELSE 'baja' END,
+                           'Proveedor concentrado: ' || empresa,
+                           participacion,
+                           'Participacion sobre kg distribuidos del periodo.'
+                    FROM concentrado
+                    WHERE participacion >= 45
+                    UNION ALL
+                    SELECT 'pendiente_antiguo',
+                           CASE WHEN cantidad >= 5 THEN 'alta' WHEN cantidad >= 2 THEN 'media' ELSE 'baja' END,
+                           'Lotes pendientes hace mas de 7 dias',
+                           cantidad,
+                           'Lotes faenados con reces todavia no distribuidas.'
+                    FROM pendientes
+                    WHERE cantidad > 0
+                    ORDER BY severidad DESC, tipo
+                    """,
+                    params + (hasta, hasta),
+                )
+                alertas_gestion = cur.fetchall()
+
+        return {
+            "kpis": kpis,
+            "proveedores": proveedores,
+            "sucursales": sucursales,
+            "mejoresLotes": mejores_lotes,
+            "alertas": alertas,
+            "alertasGestion": alertas_gestion,
         }
 
     def set_lotes_resumen_cerrado(self, payload):
@@ -3423,6 +3921,101 @@ class DashboardHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         parsed = urlparse(self.path)
         query = parse_qs(parsed.query)
+        if parsed.path == "/api/contratos":
+            try:
+                from web.backend.modules.contratos.repository import ContratosRepository
+
+                self._require_module_access("contratos")
+                return self._send_json(
+                    ContratosRepository(DATABASE_URL).list_contratos(search=query.get("search", [""])[0])
+                )
+            except ValueError as exc:
+                return self._send_json({"error": str(exc)}, status=400)
+            except PermissionDenied as exc:
+                return self._send_json({"error": str(exc)}, status=403)
+            except AuthError as exc:
+                return self._send_json({"error": str(exc)}, status=401)
+            except Exception as exc:
+                return self._send_json({"error": str(exc)}, status=500)
+        if parsed.path == "/api/acuerdos-comerciales/estadisticas":
+            try:
+                from web.backend.modules.acuerdos_comerciales.repository import AcuerdosComercialesRepository
+                from web.backend.modules.acuerdos_comerciales.schemas import ROLES_ACUERDOS
+
+                user = self._require_roles(ROLES_ACUERDOS)
+                modules = user.get("modulos_permitidos")
+                if isinstance(modules, list) and "acuerdos-estadisticas" not in modules:
+                    raise PermissionDenied("No tienes permisos para ver estadisticas de acuerdos.")
+                return self._send_json(
+                    AcuerdosComercialesRepository(DATABASE_URL).get_estadisticas(
+                        mes=query.get("mes", [None])[0],
+                        anho=query.get("anho", [None])[0],
+                    )
+                )
+            except ValueError as exc:
+                return self._send_json({"error": str(exc)}, status=400)
+            except PermissionDenied as exc:
+                return self._send_json({"error": str(exc)}, status=403)
+            except AuthError as exc:
+                return self._send_json({"error": str(exc)}, status=401)
+            except Exception as exc:
+                return self._send_json({"error": str(exc)}, status=500)
+        if parsed.path == "/api/acuerdos-comerciales/cobranzas":
+            try:
+                from web.backend.modules.acuerdos_comerciales.repository import AcuerdosComercialesRepository
+                from web.backend.modules.acuerdos_comerciales.schemas import ROLES_ACUERDOS
+
+                self._require_roles(ROLES_ACUERDOS)
+                mes = query.get("mes", [None])[0]
+                anho = query.get("anho", [None])[0]
+                if not mes or not anho:
+                    raise ValueError("Mes y anho son obligatorios.")
+                return self._send_json(AcuerdosComercialesRepository(DATABASE_URL).list_acuerdos_cobranzas(mes=mes, anho=anho))
+            except ValueError as exc:
+                return self._send_json({"error": str(exc)}, status=400)
+            except PermissionDenied as exc:
+                return self._send_json({"error": str(exc)}, status=403)
+            except AuthError as exc:
+                return self._send_json({"error": str(exc)}, status=401)
+            except Exception as exc:
+                return self._send_json({"error": str(exc)}, status=500)
+        if parsed.path == "/api/acuerdos-comerciales/cobranzas/anual":
+            try:
+                from web.backend.modules.acuerdos_comerciales.repository import AcuerdosComercialesRepository
+                from web.backend.modules.acuerdos_comerciales.schemas import ROLES_ACUERDOS
+
+                self._require_roles(ROLES_ACUERDOS)
+                anho = query.get("anho", [None])[0]
+                if not anho:
+                    raise ValueError("Anho es obligatorio.")
+                return self._send_json(AcuerdosComercialesRepository(DATABASE_URL).list_acuerdos_cobranzas_anual(anho=anho))
+            except ValueError as exc:
+                return self._send_json({"error": str(exc)}, status=400)
+            except PermissionDenied as exc:
+                return self._send_json({"error": str(exc)}, status=403)
+            except AuthError as exc:
+                return self._send_json({"error": str(exc)}, status=401)
+            except Exception as exc:
+                return self._send_json({"error": str(exc)}, status=500)
+        if parsed.path.rstrip("/") == "/api/dashboard/menudencias/pdf":
+            try:
+                user = self._require_roles({"admin", "supervisor"})
+                desde = _parse_date(query.get("desde", [None])[0])
+                hasta = _parse_date(query.get("hasta", [None])[0])
+                pdf_bytes, filename = self.repo.build_menudencias_pdf(
+                    desde=desde,
+                    hasta=hasta,
+                    generated_by=user.get("nombre") or user.get("username"),
+                )
+                return self._send_pdf(pdf_bytes, filename)
+            except ValueError:
+                return self._send_json({"error": "Formato de fecha invalido. Use YYYY-MM-DD."}, status=400)
+            except PermissionDenied as exc:
+                return self._send_json({"error": str(exc)}, status=403)
+            except AuthError as exc:
+                return self._send_json({"error": str(exc)}, status=401)
+            except Exception as exc:
+                return self._send_json({"error": str(exc)}, status=500)
         if self._dispatch_module_route("GET", parsed, query):
             return
         if parsed.path == "/api/health":
@@ -3561,6 +4154,21 @@ class DashboardHandler(BaseHTTPRequestHandler):
             except Exception as exc:
                 return self._send_json({"error": str(exc)}, status=500)
 
+        if parsed.path == "/api/estadisticas":
+            try:
+                self._require_roles({"admin", "supervisor"})
+                desde = _parse_date(query.get("desde", [None])[0])
+                hasta = _parse_date(query.get("hasta", [None])[0])
+                return self._send_json(self.repo.get_estadisticas_data(desde=desde, hasta=hasta))
+            except ValueError as exc:
+                return self._send_json({"error": str(exc)}, status=400)
+            except PermissionDenied as exc:
+                return self._send_json({"error": str(exc)}, status=403)
+            except AuthError as exc:
+                return self._send_json({"error": str(exc)}, status=401)
+            except Exception as exc:
+                return self._send_json({"error": str(exc)}, status=500)
+
         if parsed.path == "/api/resumenes/pdf":
             try:
                 self._require_roles({"admin", "supervisor"})
@@ -3662,6 +4270,87 @@ class DashboardHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         parsed = urlparse(self.path)
         query = parse_qs(parsed.query)
+        if parsed.path == "/api/contratos":
+            try:
+                from web.backend.modules.contratos.repository import ContratosRepository
+
+                self._require_module_access("contratos")
+                payload = self._read_json()
+                return self._send_json(
+                    ContratosRepository(DATABASE_URL).save_contrato(payload),
+                    status=201 if not payload.get("id") else 200,
+                )
+            except ValueError as exc:
+                return self._send_json({"error": str(exc)}, status=400)
+            except PermissionDenied as exc:
+                return self._send_json({"error": str(exc)}, status=403)
+            except AuthError as exc:
+                return self._send_json({"error": str(exc)}, status=401)
+            except Exception as exc:
+                return self._send_json({"error": str(exc)}, status=500)
+        if parsed.path == "/api/acuerdos-comerciales/cobranzas":
+            try:
+                payload = self._read_json()
+                from web.backend.modules.acuerdos_comerciales.repository import AcuerdosComercialesRepository
+                from web.backend.modules.acuerdos_comerciales.schemas import ROLES_ACUERDOS
+
+                user = self._require_roles(ROLES_ACUERDOS)
+                return self._send_json(
+                    AcuerdosComercialesRepository(DATABASE_URL).save_acuerdo_cobranza(
+                        payload,
+                        cambiado_por=user.get("username"),
+                    ),
+                    status=200,
+                )
+            except ValueError as exc:
+                return self._send_json({"error": str(exc)}, status=400)
+            except PermissionDenied as exc:
+                return self._send_json({"error": str(exc)}, status=403)
+            except AuthError as exc:
+                return self._send_json({"error": str(exc)}, status=401)
+            except Exception as exc:
+                return self._send_json({"error": str(exc)}, status=500)
+        if parsed.path == "/api/acuerdos-comerciales/mapa/ubicaciones/valor":
+            try:
+                payload = self._read_json()
+                from web.backend.modules.acuerdos_comerciales.repository import AcuerdosComercialesRepository
+                from web.backend.modules.acuerdos_comerciales.schemas import ROLES_ACUERDOS
+
+                user = self._require_roles(ROLES_ACUERDOS)
+                modules = user.get("modulos_permitidos")
+                if isinstance(modules, list) and "acuerdos-valores" not in modules:
+                    raise PermissionDenied("No tienes permisos para cambiar valores de ubicaciones.")
+                return self._send_json(
+                    AcuerdosComercialesRepository(DATABASE_URL).save_mapa_ubicacion_valor(
+                        payload,
+                        cambiado_por=user.get("username"),
+                    ),
+                    status=200,
+                )
+            except ValueError as exc:
+                return self._send_json({"error": str(exc)}, status=400)
+            except PermissionDenied as exc:
+                return self._send_json({"error": str(exc)}, status=403)
+            except AuthError as exc:
+                return self._send_json({"error": str(exc)}, status=401)
+            except Exception as exc:
+                return self._send_json({"error": str(exc)}, status=500)
+        if parsed.path.rstrip("/") == "/api/acuerdos-comerciales/eliminar":
+            try:
+                payload = self._read_json()
+                from web.backend.modules.acuerdos_comerciales.routes import service as acuerdos_service
+                from web.backend.modules.acuerdos_comerciales.schemas import ROLES_ACUERDOS
+
+                user = self._require_roles(ROLES_ACUERDOS)
+                return self._send_json(acuerdos_service.eliminar_acuerdo(payload, cambiado_por=user.get("username")), status=200)
+            except ValueError as exc:
+                return self._send_json({"error": str(exc)}, status=400)
+            except PermissionDenied as exc:
+                return self._send_json({"error": str(exc)}, status=403)
+            except AuthError as exc:
+                return self._send_json({"error": str(exc)}, status=401)
+            except Exception as exc:
+                return self._send_json({"error": str(exc)}, status=500)
         if self._has_module_route("POST", parsed.path):
             try:
                 payload = self._read_json()
@@ -3760,6 +4449,9 @@ class DashboardHandler(BaseHTTPRequestHandler):
             if parsed.path == "/api/compras-faena/lotes":
                 self._require_roles({"admin", "supervisor"})
                 return self._send_json(self.repo.save_lote(payload), status=201 if not payload.get("id") else 200)
+            if parsed.path == "/api/compras-faena/lotes/eliminar":
+                self._require_roles({"admin", "supervisor"})
+                return self._send_json(self.repo.delete_lote_compra(payload))
             if parsed.path == "/api/compras-faena/faenas":
                 self._require_roles({"admin", "supervisor"})
                 return self._send_json(self.repo.add_faena(payload), status=201)
@@ -3852,6 +4544,18 @@ class DashboardHandler(BaseHTTPRequestHandler):
         if self._dispatch_module_route("DELETE", parsed, query):
             return
         try:
+            if parsed.path == "/api/acuerdos-comerciales":
+                from web.backend.modules.acuerdos_comerciales.routes import service as acuerdos_service
+                from web.backend.modules.acuerdos_comerciales.schemas import ROLES_ACUERDOS
+
+                user = self._require_roles(ROLES_ACUERDOS)
+                acuerdo_id = query.get("id", [None])[0] or query.get("acuerdo_id", [None])[0]
+                if not acuerdo_id:
+                    raise ValueError("El acuerdo_id es obligatorio.")
+                return self._send_json(
+                    acuerdos_service.descartar_negociacion(acuerdo_id, cambiado_por=user.get("username")),
+                    status=200,
+                )
             if parsed.path == "/api/distribuciones":
                 self._require_roles({"admin", "supervisor"})
                 query = parse_qs(parsed.query)
@@ -3898,6 +4602,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
             for key, value in extra_headers or []:
                 self.send_header(key, value)
             self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+            self.send_header("Pragma", "no-cache")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
@@ -3982,6 +4688,20 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
     def _require_roles(self, allowed_roles: set[str]) -> dict[str, Any]:
         return self.auth.require_roles(self._get_current_user(), allowed_roles)
+
+    def _require_module_access(self, module_key: str) -> dict[str, Any]:
+        user = self._get_current_user()
+        if not user:
+            raise AuthError("Sesion requerida.")
+        role = str(user.get("rol") or "")
+        modules = user.get("modulos_permitidos")
+        if isinstance(modules, list):
+            if module_key not in modules:
+                raise PermissionDenied("No tienes permisos para este modulo.")
+            return user
+        if role in {"admin", "supervisor"}:
+            return user
+        raise PermissionDenied("No tienes permisos para este modulo.")
 
     def _get_flota_sucursal_scope(self, requested_slug: str | None = None) -> str | None:
         user = self._get_current_user()

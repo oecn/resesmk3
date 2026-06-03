@@ -19,44 +19,14 @@ export class ResumenesComponent implements OnInit {
   resumenDesde = '';
   resumenHasta = '';
   resumenBusqueda = '';
-  resumenMaxFilas = 500;
+  resumenMaxFilas = signal(20);
   resumenSeleccionados = new Set<number>();
   resumenLoading = signal(false);
   error = signal('');
   resumenes = signal<ResumenesData | null>(null);
+  distribucionesDetalleOpen = signal(false);
 
-  resumenLotesFiltrados = computed(() => {
-    const data = this.resumenes();
-    if (!data) {
-      return [];
-    }
-    const term = this.resumenBusqueda.trim().toLowerCase();
-    const desde = this.resumenDesde || '';
-    const hasta = this.resumenHasta || '';
-    let rows = data.lotes.filter((lote) => {
-      if (this.resumenFiltro === 'Pendientes' && !((Number(lote.faenado) || 0) > 0 && (Number(lote.distribuido) || 0) < (Number(lote.faenado) || 0))) {
-        return false;
-      }
-      if (this.resumenFiltro === 'Completados' && !((Number(lote.faenado) || 0) > 0 && (Number(lote.distribuido) || 0) === (Number(lote.faenado) || 0))) {
-        return false;
-      }
-      if (this.resumenEmpresa !== 'Todas' && lote.empresa !== this.resumenEmpresa) {
-        return false;
-      }
-      if (desde && lote.fecha < desde) {
-        return false;
-      }
-      if (hasta && lote.fecha > hasta) {
-        return false;
-      }
-      if (term && ![lote.lote, lote.empresa, lote.fecha].some((value) => String(value ?? '').toLowerCase().includes(term))) {
-        return false;
-      }
-      return true;
-    });
-    rows = rows.slice(0, Number(this.resumenMaxFilas) || 500);
-    return rows;
-  });
+  resumenLotesFiltrados = computed(() => this.filtrarResumenLotes(true));
 
   resumenCostoKgPromedio = computed(() => {
     const selectedRows = this.resumenSeleccionados.size > 0
@@ -90,6 +60,8 @@ export class ResumenesComponent implements OnInit {
       { kg: 0, cabezas: 0, dif_kg: 0 },
     );
   });
+
+  resumenTotalFiltrado = computed(() => this.filtrarResumenLotes(false).length);
 
   constructor(private readonly resumenesService: ResumenesService) {}
 
@@ -187,6 +159,46 @@ export class ResumenesComponent implements OnInit {
     });
   }
 
+  cargarDiezMasResumenes(): void {
+    this.resumenMaxFilas.update((value) => (Number(value) || 20) + 10);
+  }
+
+  cargarTodosResumenes(): void {
+    this.resumenMaxFilas.set(this.resumenTotalFiltrado());
+  }
+
+  abrirDistribucionesDetalle(): void {
+    if (this.resumenSeleccionados.size === 0) {
+      this.error.set('Selecciona al menos un lote para ver sus distribuciones.');
+      return;
+    }
+    this.resumenLoading.set(true);
+    this.error.set('');
+    this.resumenesService.getResumenes(Array.from(this.resumenSeleccionados)).subscribe({
+      next: (data) => {
+        this.resumenes.set(data);
+        this.resumenLoading.set(false);
+        this.distribucionesDetalleOpen.set(true);
+      },
+      error: (err) => {
+        this.error.set(err?.error?.error ?? 'No se pudieron cargar las distribuciones del lote.');
+        this.resumenLoading.set(false);
+      },
+    });
+  }
+
+  cerrarDistribucionesDetalle(): void {
+    this.distribucionesDetalleOpen.set(false);
+  }
+
+  distribucionesDetalleLotesLabel(): string {
+    const selected = this.resumenLotesFiltrados().filter((lote) => this.resumenSeleccionados.has(lote.id));
+    if (selected.length === 1) {
+      return selected[0].lote;
+    }
+    return `${selected.length} lotes seleccionados`;
+  }
+
   resumenLoteClass(lote: LoteResumen): string[] {
     const classes: string[] = [];
     const rend = Number(lote.rend_pct) || Number(lote.pct_distribuido) || 0;
@@ -201,5 +213,37 @@ export class ResumenesComponent implements OnInit {
       classes.push('resumen-cerrado');
     }
     return classes;
+  }
+
+  private filtrarResumenLotes(aplicarLimite: boolean): LoteResumen[] {
+    const data = this.resumenes();
+    if (!data) {
+      return [];
+    }
+    const term = this.resumenBusqueda.trim().toLowerCase();
+    const desde = this.resumenDesde || '';
+    const hasta = this.resumenHasta || '';
+    const rows = data.lotes.filter((lote) => {
+      if (this.resumenFiltro === 'Pendientes' && !((Number(lote.faenado) || 0) > 0 && (Number(lote.distribuido) || 0) < (Number(lote.faenado) || 0))) {
+        return false;
+      }
+      if (this.resumenFiltro === 'Completados' && !((Number(lote.faenado) || 0) > 0 && (Number(lote.distribuido) || 0) === (Number(lote.faenado) || 0))) {
+        return false;
+      }
+      if (this.resumenEmpresa !== 'Todas' && lote.empresa !== this.resumenEmpresa) {
+        return false;
+      }
+      if (desde && lote.fecha < desde) {
+        return false;
+      }
+      if (hasta && lote.fecha > hasta) {
+        return false;
+      }
+      if (term && ![lote.lote, lote.empresa, lote.fecha].some((value) => String(value ?? '').toLowerCase().includes(term))) {
+        return false;
+      }
+      return true;
+    });
+    return aplicarLimite ? rows.slice(0, Number(this.resumenMaxFilas()) || 20) : rows;
   }
 }

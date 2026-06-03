@@ -9,6 +9,7 @@ export interface NavigationItem {
 
 export const APP_NAV_ITEMS: NavigationItem[] = [
   { key: 'dashboard', route: '/dashboard', label: 'Dashboard', title: 'Dashboard' },
+  { key: 'estadisticas', route: '/estadisticas', label: 'Estadisticas', title: 'Estadisticas' },
   { key: 'compras-faena', route: '/compras-faena', label: 'Compras y faena', title: 'Compras y faena' },
   { key: 'resumenes', route: '/resumenes', label: 'Resumenes', title: 'Resumenes' },
   { key: 'distribuciones', route: '/distribuciones', label: 'Distribuciones', title: 'Distribuciones' },

@@ -8,7 +8,7 @@ export class ContratosService {
   constructor(private readonly api: ApiService) {}
 
   listContratos(search = ''): Observable<ContratosResponse> {
-    return this.api.get<ContratosResponse>('/contratos', { search });
+    return this.api.get<ContratosResponse>('/contratos', { search, _ts: Date.now() });
   }
 
   saveContrato(payload: Contrato): Observable<Contrato> {

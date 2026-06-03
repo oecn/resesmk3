@@ -13,6 +13,11 @@ export const routes: Routes = [
     canActivate: [authGuard],
   },
   {
+    path: 'estadisticas',
+    loadComponent: () => import('./features/estadisticas/estadisticas.component').then(m => m.EstadisticasComponent),
+    canActivate: [authGuard],
+  },
+  {
     path: 'compras-faena',
     loadComponent: () => import('./features/operaciones/compras-faena/compras-faena.component').then(m => m.ComprasFaenaComponent),
     canActivate: [authGuard],

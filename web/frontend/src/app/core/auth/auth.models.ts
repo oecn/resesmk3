@@ -2,6 +2,7 @@ export type UserRole = 'admin' | 'supervisor' | 'recepcion';
 export type SucursalSlug = 'aregua' | 'luque' | 'itaugua';
 export type AppModuleKey =
   | 'dashboard'
+  | 'estadisticas'
   | 'compras-faena'
   | 'resumenes'
   | 'recepcion'
@@ -10,7 +11,9 @@ export type AppModuleKey =
   | 'flota'
   | 'archivos-directorio'
   | 'contratos'
-  | 'acuerdos-comerciales';
+  | 'acuerdos-comerciales'
+  | 'acuerdos-estadisticas'
+  | 'acuerdos-valores';
 
 export interface CurrentUser {
   id: number;

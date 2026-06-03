@@ -17,6 +17,7 @@ export class SidebarNavComponent {
   @Input() userDisplayName = 'Sin sesion';
   @Input() userRoleLabel = 'Invitado';
   @Input() canViewDashboard = false;
+  @Input() canViewEstadisticas = false;
   @Input() canManageComprasFaena = false;
   @Input() canViewResumenes = false;
   @Input() canManageDistribuciones = false;

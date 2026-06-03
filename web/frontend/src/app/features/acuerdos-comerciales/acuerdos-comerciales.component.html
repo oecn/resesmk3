@@ -11,7 +11,19 @@
   <p *ngIf="ok()" class="success-alert">{{ ok() }}</p>
   <p *ngIf="loading()" class="muted">Cargando informacion comercial...</p>
 
-  <section class="acuerdos-grid">
+  <nav class="tab-row">
+    <button type="button" [class.active]="activeTab === 'cargados'" (click)="cambiarTab('cargados')">Acuerdos cargados</button>
+    <button type="button" [class.active]="activeTab === 'nuevo'" (click)="cambiarTab('nuevo')">Nuevo acuerdo</button>
+    <button type="button" [class.active]="activeTab === 'negociaciones'" (click)="cambiarTab('negociaciones')">Negociaciones</button>
+    <button type="button" [class.active]="activeTab === 'proveedores'" (click)="cambiarTab('proveedores')">Proveedores</button>
+    <button type="button" [class.active]="activeTab === 'cobranzas'" (click)="cambiarTab('cobranzas')">Cobranza</button>
+    <button *ngIf="canViewEstadisticas()" type="button" [class.active]="activeTab === 'estadisticas'" (click)="cambiarTab('estadisticas')">Estadisticas</button>
+    <button type="button" [class.active]="activeTab === 'historial-proveedor'" (click)="cambiarTab('historial-proveedor')">Historial proveedor</button>
+    <button type="button" [class.active]="activeTab === 'importar-ubicaciones'" (click)="cambiarTab('importar-ubicaciones')">Importar ubicaciones</button>
+    <button type="button" [class.active]="activeTab === 'mapa'" (click)="cambiarTab('mapa')">Mapa</button>
+  </nav>
+
+  <section class="acuerdos-grid" *ngIf="activeTab === 'cargados'">
     <article class="acuerdo-kpi">
       <span>Acuerdos</span>
       <strong>{{ acuerdos().length }}</strong>
@@ -28,23 +40,60 @@
       <span>Proveedores</span>
       <strong>{{ proveedoresCount() }}</strong>
     </article>
+    <article class="acuerdo-kpi occupancy-kpi">
+      <div class="occupancy-kpi-head">
+        <span>Ocupacion por sector</span>
+        <strong>{{ ocupacionTotal().ocupadas }}/{{ ocupacionTotal().total }}</strong>
+      </div>
+      <div class="occupancy-kpi-list">
+        <div *ngFor="let kpi of ocupacionKpis()">
+          <div>
+            <span>{{ kpi.label }}</span>
+            <b>{{ kpi.ocupadas }}/{{ kpi.total }}</b>
+          </div>
+          <progress max="100" [value]="ocupacionPorcentaje(kpi)"></progress>
+        </div>
+      </div>
+    </article>
   </section>
 
-  <nav class="tab-row">
-    <button type="button" [class.active]="activeTab === 'cargados'" (click)="cambiarTab('cargados')">Acuerdos cargados</button>
-    <button type="button" [class.active]="activeTab === 'nuevo'" (click)="cambiarTab('nuevo')">Nuevo acuerdo</button>
-    <button type="button" [class.active]="activeTab === 'proveedores'" (click)="cambiarTab('proveedores')">Proveedores</button>
-    <button type="button" [class.active]="activeTab === 'cobranzas'" (click)="cambiarTab('cobranzas')">Cobranza</button>
-    <button type="button" [class.active]="activeTab === 'historial-proveedor'" (click)="cambiarTab('historial-proveedor')">Historial proveedor</button>
-    <button type="button" [class.active]="activeTab === 'importar-ubicaciones'" (click)="cambiarTab('importar-ubicaciones')">Importar ubicaciones</button>
-    <button type="button" [class.active]="activeTab === 'mapa'" (click)="cambiarTab('mapa')">Mapa</button>
-  </nav>
-
-  <section class="acuerdos-layout form-only" *ngIf="activeTab === 'nuevo'">
-    <form class="acuerdos-panel acuerdos-form" (ngSubmit)="guardarAcuerdo()">
+  <section class="acuerdos-layout form-only" *ngIf="activeTab === 'nuevo' || activeTab === 'negociaciones'">
+    <section class="acuerdos-panel" *ngIf="activeTab === 'negociaciones'">
       <div class="panel-title">
-        <h2>{{ editId ? 'Editar acuerdo' : 'Nuevo acuerdo' }}</h2>
-        <span>{{ totalUbicaciones() }} ubicaciones registradas</span>
+        <h2>Negociaciones en proceso</h2>
+        <span>{{ negociaciones().length }} abiertas</span>
+      </div>
+      <div class="agreement-list compact-list" *ngIf="negociaciones().length; else emptyNegociaciones">
+        <article class="agreement-item" *ngFor="let acuerdo of negociaciones()">
+          <div class="agreement-head">
+            <div>
+              <strong>{{ acuerdo.proveedor_nombre }}</strong>
+              <span>{{ acuerdo.titulo }}</span>
+            </div>
+            <div class="row-actions">
+              <button type="button" class="secondary mini-button" (click)="abrirNegociacion(acuerdo)">Abrir</button>
+              <button type="button" class="danger mini-button" *ngIf="acuerdo.acuerdo_origen_id" (click)="descartarNegociacion(acuerdo)" [disabled]="loading()">Descartar</button>
+            </div>
+          </div>
+          <div class="agreement-meta">
+            <span *ngIf="acuerdo.acuerdo_origen_id">Origen #{{ acuerdo.acuerdo_origen_id }}</span>
+            <span>{{ acuerdo.ubicaciones_count }} ubicaciones tentativas</span>
+            <span>{{ acuerdo.vigencia_desde || '-' }} / {{ acuerdo.vigencia_hasta || '-' }}</span>
+          </div>
+        </article>
+      </div>
+      <ng-template #emptyNegociaciones>
+        <div class="empty-state">
+          <strong>Sin negociaciones abiertas</strong>
+          <span>Usa Renovar desde un acuerdo vigente para iniciar una negociacion.</span>
+        </div>
+      </ng-template>
+    </section>
+
+    <form class="acuerdos-panel acuerdos-form" (ngSubmit)="guardarAcuerdo(activeTab === 'negociaciones' ? 'en_negociacion' : null)">
+      <div class="panel-title">
+        <h2>{{ formTitle() }}</h2>
+        <span>{{ activeTab === 'negociaciones' ? 'Propuesta transitoria' : totalUbicaciones() + ' ubicaciones registradas' }}</span>
       </div>
 
       <div class="form-grid">
@@ -105,35 +154,46 @@
 
       <section class="ubicaciones-block">
         <div class="sub-title">
-          <h3>Ubicaciones</h3>
-          <button type="button" class="secondary" (click)="agregarUbicacion()">Agregar ubicacion</button>
+          <div>
+            <h3>Ubicaciones</h3>
+            <span>{{ ubicaciones.length }} seleccionadas</span>
+          </div>
+          <button type="button" (click)="agregarUbicacion()">Agregar ubicacion</button>
         </div>
-        <div class="ubicacion-row" *ngFor="let ubicacion of ubicaciones; let i = index; trackBy: trackByIndex">
-          <label>
-            Sucursal
-            <select [name]="'sucursal' + i" [(ngModel)]="ubicacion.sucursal">
-              <option *ngFor="let sucursal of sucursales" [value]="sucursal.slug">{{ sucursal.nombre }}</option>
-            </select>
-          </label>
-          <label>
-            Tipo
-            <select [name]="'tipoEspacio' + i" [(ngModel)]="ubicacion.tipo_espacio">
-              <option *ngFor="let tipo of tiposEspacio" [value]="tipo.value">{{ tipo.label }}</option>
-            </select>
-          </label>
-          <label class="location-field">
-            Ubicacion
-            <input type="text" [name]="'ubicacion' + i" [(ngModel)]="ubicacion.ubicacion" placeholder="Pasillo 12 zona verduleria">
-          </label>
-          <label>
-            Codigo
-            <input type="text" [name]="'codigo' + i" [(ngModel)]="ubicacion.codigo" placeholder="A-1-P">
-          </label>
-          <label>
-            Valor Gs.
-            <input type="text" [name]="'valorGs' + i" [(ngModel)]="ubicacion.valor_gs" placeholder="2000000">
-          </label>
-          <button type="button" class="danger mini-button" (click)="quitarUbicacion(i)">Quitar</button>
+        <div class="ubicaciones-list">
+          <article class="ubicacion-card" *ngFor="let ubicacion of ubicaciones; let i = index; trackBy: trackByIndex">
+            <div class="ubicacion-card-head">
+              <strong>{{ ubicacion.codigo || ubicacion.ubicacion || 'Nueva ubicacion' }}</strong>
+              <button type="button" class="danger mini-button" (click)="quitarUbicacion(i)">Quitar</button>
+            </div>
+            <div class="ubicacion-fields">
+              <label>
+                Sucursal
+                <select [name]="'sucursal' + i" [(ngModel)]="ubicacion.sucursal">
+                  <option *ngFor="let sucursal of sucursales" [value]="sucursal.slug">{{ sucursal.nombre }}</option>
+                </select>
+              </label>
+              <label>
+                Tipo
+                <select [name]="'tipoEspacio' + i" [(ngModel)]="ubicacion.tipo_espacio">
+                  <option *ngFor="let tipo of tiposEspacio" [value]="tipo.value">{{ tipo.label }}</option>
+                </select>
+              </label>
+              <label class="location-field">
+                Ubicacion
+                <input type="text" [name]="'ubicacion' + i" [(ngModel)]="ubicacion.ubicacion" placeholder="Selecciona desde el mapa" readonly>
+              </label>
+              <label>
+                Codigo
+                <input type="text" [name]="'codigo' + i" [(ngModel)]="ubicacion.codigo" placeholder="A-1-P" readonly>
+              </label>
+              <label>
+                Valor Gs.
+                <input type="text" [name]="'valorGs' + i" [(ngModel)]="ubicacion.valor_gs" placeholder="2000000">
+              </label>
+              <button type="button" class="secondary map-picker-button" (click)="abrirSelectorUbicacion(i)">Elegir en mapa</button>
+            </div>
+          </article>
         </div>
       </section>
 
@@ -164,7 +224,10 @@
       </section>
 
       <div class="form-actions">
-        <button type="submit" [disabled]="loading()">{{ editId ? 'Guardar cambios' : 'Guardar acuerdo' }}</button>
+        <button type="button" class="warning" *ngIf="activeTab === 'negociaciones'" (click)="guardarAcuerdo('en_negociacion')" [disabled]="loading()">Mantener en negociacion</button>
+        <button type="button" *ngIf="activeTab === 'negociaciones'" (click)="guardarAcuerdo('vigente')" [disabled]="loading()">Confirmar acuerdo</button>
+        <button type="button" class="danger" *ngIf="activeTab === 'negociaciones' && editId && acuerdoOrigenId" (click)="descartarNegociacionActual()" [disabled]="loading()">Descartar negociacion</button>
+        <button type="submit" class="secondary" *ngIf="activeTab !== 'negociaciones'" [disabled]="loading()">{{ editId ? 'Guardar cambios' : 'Guardar acuerdo' }}</button>
         <button type="button" class="secondary" *ngIf="editId" (click)="limpiarFormulario()" [disabled]="loading()">Cancelar</button>
       </div>
     </form>
@@ -181,6 +244,7 @@
           <button type="button" class="secondary mini-button" (click)="verHistorialProveedorDesdeAcuerdo(detalle)">Historial proveedor</button>
           <button type="button" class="secondary mini-button" (click)="renovarAcuerdo(detalle)" [disabled]="!puedeRenovar(detalle)" [title]="puedeRenovar(detalle) ? 'Renovar acuerdo' : 'Este acuerdo ya fue renovado'">Renovar</button>
           <button type="button" class="secondary mini-button" (click)="editarAcuerdo(detalle)">Editar</button>
+          <button type="button" class="danger mini-button" (click)="eliminarAcuerdo(detalle)" [disabled]="loading()">Eliminar</button>
           <button type="button" class="secondary mini-button" (click)="cerrarDetalleAcuerdo()">Cerrar</button>
         </div>
       </div>
@@ -207,6 +271,10 @@
           <strong>{{ detalle.activo ? 'Activo' : 'Inactivo' }}</strong>
         </div>
         <div>
+          <span>Alquiler</span>
+          <strong>Gs. {{ alquilerTotal(detalle.ubicaciones) | number:'1.0-0' }}</strong>
+        </div>
+        <div>
           <span>Renovacion</span>
           <strong>{{ estadoRenovacionLabel(detalle.estado_renovacion) }}</strong>
         </div>
@@ -223,6 +291,33 @@
         <span *ngIf="detalle.renovado_por_acuerdo_id">Renovado por: acuerdo #{{ detalle.renovado_por_acuerdo_id }}</span>
       </div>
 
+      <section class="detalle-section executive-provider" *ngIf="canViewEstadisticas() && cobranzaProveedor(detalle.proveedor_id) as cobranza">
+        <div class="sub-title">
+          <h3>Vista ejecutiva del proveedor</h3>
+          <span>{{ sucursalesProveedor(detalle.proveedor_id) }}</span>
+        </div>
+        <div class="executive-provider-grid">
+          <div>
+            <span>Ingreso mensual total</span>
+            <strong>Gs. {{ ingresoMensualProveedor(detalle.proveedor_id) | number:'1.0-0' }}</strong>
+          </div>
+          <div>
+            <span>Ingreso anualizado</span>
+            <strong>Gs. {{ (ingresoMensualProveedor(detalle.proveedor_id) * 12) | number:'1.0-0' }}</strong>
+          </div>
+          <div *ngIf="riesgoVencimientoProveedor(detalle.proveedor_id) as riesgo">
+            <span>Riesgo por vencimiento</span>
+            <strong>{{ riesgo.label }}</strong>
+            <small>Gs. {{ riesgo.valor | number:'1.0-0' }}</small>
+          </div>
+          <div [ngClass]="cobranza.className">
+            <span>Estado de cobranza</span>
+            <strong>{{ cobranza.estado }}</strong>
+            <small>Facturado Gs. {{ cobranza.facturado | number:'1.0-0' }} · Pendiente Gs. {{ cobranza.pendiente | number:'1.0-0' }}</small>
+          </div>
+        </div>
+      </section>
+
       <section class="detalle-section">
         <h3>Observaciones</h3>
         <p>{{ detalle.observaciones || 'Sin observaciones' }}</p>
@@ -234,9 +329,13 @@
           <article *ngFor="let group of ubicacionesPorTipo(detalle.ubicaciones)">
             <strong>{{ tipoEspacioLabel(group.tipo) }}</strong>
             <div class="ubicacion-stack">
-              <span *ngFor="let ubicacion of group.items">
-                {{ ubicacion.sucursal }} - {{ ubicacion.codigo || ubicacion.ubicacion }}
-                <small *ngIf="ubicacion.valor_gs">Gs. {{ ubicacion.valor_gs | number:'1.0-0' }}</small>
+              <span *ngFor="let ubicacion of group.items" class="ubicacion-box" [ngClass]="ubicacionClass(ubicacion)">
+                <b>{{ ubicacion.codigo || ubicacion.ubicacion }}</b>
+                <small>
+                  <span class="sucursal-pill">{{ sucursalLabel(ubicacion.sucursal) }}</span>
+                  <ng-container *ngIf="ubicacion.valor_gs; else valorFaltanteDetalle"> · Gs. {{ ubicacion.valor_gs | number:'1.0-0' }}</ng-container>
+                  <ng-template #valorFaltanteDetalle> · Sin valor</ng-template>
+                </small>
                 <small *ngIf="ubicacion.detalle">{{ ubicacion.detalle }}</small>
               </span>
             </div>
@@ -251,7 +350,7 @@
         <span>{{ acuerdos().length }} registros</span>
       </div>
       <div class="search-row">
-        <input type="search" name="busqueda" [(ngModel)]="busqueda" placeholder="Proveedor, RUC, ubicacion">
+        <input type="search" name="busqueda" [(ngModel)]="busqueda" (ngModelChange)="buscarAcuerdosAutomatico()" placeholder="Proveedor, RUC, ubicacion">
         <button type="button" (click)="cargarAcuerdos()" [disabled]="loading()">Buscar</button>
       </div>
 
@@ -267,6 +366,7 @@
               <button type="button" class="secondary mini-button" (click)="verHistorialProveedorDesdeAcuerdo(acuerdo)">Historial</button>
               <button type="button" class="secondary mini-button" (click)="renovarAcuerdo(acuerdo)" [disabled]="!puedeRenovar(acuerdo)" [title]="puedeRenovar(acuerdo) ? 'Renovar acuerdo' : 'Este acuerdo ya fue renovado'">Renovar</button>
               <button type="button" class="secondary mini-button" (click)="editarAcuerdo(acuerdo)">Editar</button>
+              <button type="button" class="danger mini-button" (click)="eliminarAcuerdo(acuerdo)" [disabled]="loading()">Eliminar</button>
             </div>
           </div>
           <div class="agreement-meta">
@@ -275,12 +375,23 @@
             <span>{{ estadoRenovacionLabel(acuerdo.estado_renovacion) }}</span>
             <span class="expiry-badge" [ngClass]="vencimientoClass(acuerdo)">{{ vencimientoLabel(acuerdo) }}</span>
             <span>{{ acuerdo.punteras_count }} punteras</span>
+            <span>{{ contarPestanas(acuerdo.ubicaciones) }} pestañas</span>
+            <span>{{ contarLineaCaja(acuerdo.ubicaciones) }} linea de caja</span>
             <span>{{ acuerdo.ubicaciones_count }} ubicaciones</span>
           </div>
-          <ul>
+          <ul class="agreement-ubicaciones-preview">
             <li *ngFor="let group of ubicacionesPorTipo(acuerdo.ubicaciones)">
               <strong>{{ tipoEspacioLabel(group.tipo) }}</strong>
-              <span *ngFor="let ubicacion of group.items">{{ ubicacion.sucursal }} - {{ ubicacion.codigo || ubicacion.ubicacion }}</span>
+              <div class="preview-location-grid">
+                <span *ngFor="let ubicacion of group.items" class="preview-location-chip" [ngClass]="ubicacionClass(ubicacion)">
+                  <b>{{ ubicacion.codigo || ubicacion.ubicacion }}</b>
+                  <small>
+                    <span class="sucursal-pill">{{ sucursalLabel(ubicacion.sucursal) }}</span>
+                    <ng-container *ngIf="ubicacion.valor_gs; else valorFaltantePreview"> · Gs. {{ ubicacion.valor_gs | number:'1.0-0' }}</ng-container>
+                    <ng-template #valorFaltantePreview> · Sin valor</ng-template>
+                  </small>
+                </span>
+              </div>
             </li>
           </ul>
         </article>
@@ -334,7 +445,7 @@
         <span>{{ proveedores().length }} registros</span>
       </div>
       <div class="search-row">
-        <input type="search" name="proveedorBusqueda" [(ngModel)]="proveedorBusqueda" placeholder="Nombre, RUC, telefono">
+        <input type="search" name="proveedorBusqueda" [(ngModel)]="proveedorBusqueda" (ngModelChange)="buscarProveedoresAutomatico()" placeholder="Nombre, RUC, telefono">
         <button type="button" (click)="cargarProveedores()" [disabled]="loading()">Buscar</button>
       </div>
       <div class="agreement-list" *ngIf="proveedores().length; else emptyProveedores">
@@ -371,6 +482,151 @@
     <app-acuerdos-cobranzas-panel></app-acuerdos-cobranzas-panel>
   </section>
 
+  <section class="acuerdos-layout form-only" *ngIf="activeTab === 'estadisticas'">
+    <section class="acuerdos-panel estadisticas-panel">
+      <div class="panel-title">
+        <div>
+          <h2>Estadisticas ejecutivas</h2>
+          <span>Rentabilidad, riesgo, cobranza y uso de espacios comerciales.</span>
+        </div>
+        <div class="stats-period">
+          <input type="date" [ngModel]="estadisticasPeriodoInputValue()" (ngModelChange)="actualizarEstadisticasDesdeFecha($event)">
+          <button type="button" class="secondary mini-button" (click)="cargarEstadisticas()" [disabled]="estadisticasLoading()">Actualizar</button>
+        </div>
+      </div>
+
+      <p *ngIf="estadisticasLoading()" class="muted">Cargando estadisticas...</p>
+      <p *ngIf="estadisticasError()" class="alert">{{ estadisticasError() }}</p>
+
+      <ng-container *ngIf="estadisticas() as stats">
+        <section class="executive-kpis">
+          <article>
+            <span>Ingreso mensual contratado</span>
+            <strong>Gs. {{ stats.resumen.ingreso_mensual_contratado | number:'1.0-0' }}</strong>
+          </article>
+          <article>
+            <span>Ingreso anualizado</span>
+            <strong>Gs. {{ stats.resumen.ingreso_anualizado | number:'1.0-0' }}</strong>
+          </article>
+          <article>
+            <span>Cobranza efectiva</span>
+            <strong>{{ stats.resumen.porcentaje_cobranza_monto | number:'1.0-1' }}%</strong>
+          </article>
+          <article>
+            <span>Saldo pendiente</span>
+            <strong>Gs. {{ stats.resumen.total_pendiente | number:'1.0-0' }}</strong>
+          </article>
+          <article>
+            <span>Valor en riesgo 90 dias</span>
+            <strong>Gs. {{ stats.resumen.valor_riesgo_90 | number:'1.0-0' }}</strong>
+          </article>
+          <article>
+            <span>Concentracion top 5</span>
+            <strong>{{ stats.resumen.concentracion_top5 | number:'1.0-1' }}%</strong>
+          </article>
+        </section>
+
+        <section class="stats-grid">
+          <article class="stats-card occupancy-card">
+            <div class="stats-card-title">
+              <h3>Cobranza del periodo</h3>
+              <span>{{ stats.periodo.mes }}/{{ stats.periodo.anho }}</span>
+            </div>
+            <div class="stats-metrics">
+              <span>Facturado <b>Gs. {{ stats.resumen.total_facturado | number:'1.0-0' }}</b></span>
+              <span>Cobrado <b>Gs. {{ stats.resumen.total_cobrado | number:'1.0-0' }}</b></span>
+              <span>Facturas cobradas <b>{{ stats.resumen.facturas_cobradas }}/{{ stats.resumen.facturas_cargadas }}</b></span>
+              <span>Sin facturacion <b>{{ stats.resumen.acuerdos_sin_facturacion }}</b></span>
+            </div>
+          </article>
+
+          <article class="stats-card occupancy-card">
+            <div class="stats-card-title">
+              <h3>Riesgo y renovaciones</h3>
+              <span>{{ stats.resumen.negociaciones }} negociaciones</span>
+            </div>
+            <div class="stats-metrics">
+              <span>Vencen en 30 dias <b>{{ stats.resumen.vencen_30 }}</b></span>
+              <span>Vencen en 60 dias <b>{{ stats.resumen.vencen_60 }}</b></span>
+              <span>Vencen en 90 dias <b>{{ stats.resumen.vencen_90 }}</b></span>
+              <span>Vencidos <b>{{ stats.resumen.vencidos }}</b></span>
+            </div>
+          </article>
+        </section>
+
+        <section class="stats-grid">
+          <article class="stats-card">
+            <div class="stats-card-title">
+              <h3>Top proveedores por ingreso</h3>
+              <span>Concentracion comercial</span>
+            </div>
+            <div class="ranking-list">
+              <div *ngFor="let proveedor of stats.top_proveedores; let i = index">
+                <span>{{ i + 1 }}. {{ proveedor.proveedor_nombre }}</span>
+                <b>Gs. {{ proveedor.valor_mensual | number:'1.0-0' }}</b>
+                <small>{{ proveedor.ubicaciones }} ubicaciones</small>
+              </div>
+            </div>
+          </article>
+
+          <article class="stats-card occupancy-card">
+            <div class="stats-card-title">
+              <h3>Ocupacion de espacios</h3>
+              <span>Activos comerciales</span>
+            </div>
+            <div class="occupancy-list">
+              <section class="occupancy-branch" *ngFor="let grupo of ocupacionPorSucursal(stats.ocupacion)">
+                <header>
+                  <h4>{{ sucursalLabel(grupo.sucursal) }}</h4>
+                  <span>{{ grupo.ocupadas }}/{{ grupo.total }} ocupadas</span>
+                </header>
+                <div class="occupancy-row" *ngFor="let item of grupo.items">
+                <div>
+                  <span>{{ tipoEspacioLabel(item.tipo_espacio) }} - {{ bloqueOcupacionLabel(item.bloque) }}</span>
+                  <b>{{ item.ocupadas }}/{{ item.total }}</b>
+                </div>
+                <progress max="100" [value]="ocupacionPorcentaje(item)"></progress>
+                <small>{{ ocupacionPorcentaje(item) | number:'1.0-0' }}% ocupado · Potencial libre Gs. {{ item.potencial_libre | number:'1.0-0' }}</small>
+                </div>
+              </section>
+            </div>
+          </article>
+        </section>
+
+        <section class="stats-grid">
+          <article class="stats-card">
+            <div class="stats-card-title">
+              <h3>Mix comercial</h3>
+              <span>Ingreso por sucursal y espacio</span>
+            </div>
+            <div class="ranking-list compact">
+              <div *ngFor="let item of stats.mix_espacios">
+                <span>{{ sucursalLabel(item.sucursal) }} - {{ tipoEspacioLabel(item.tipo_espacio) }}</span>
+                <b>Gs. {{ item.valor_mensual | number:'1.0-0' }}</b>
+                <small>{{ item.ubicaciones }} ubicaciones</small>
+              </div>
+            </div>
+          </article>
+
+          <article class="stats-card">
+            <div class="stats-card-title">
+              <h3>Proximos vencimientos</h3>
+              <span>90 dias</span>
+            </div>
+            <div class="ranking-list compact">
+              <div *ngFor="let item of stats.vencimientos">
+                <span>{{ item.proveedor_nombre }}</span>
+                <b>{{ item.dias < 0 ? 'Vencido' : item.dias + ' dias' }}</b>
+                <small>{{ item.vigencia_hasta || '-' }} · Gs. {{ item.valor_mensual | number:'1.0-0' }}</small>
+              </div>
+              <p *ngIf="!stats.vencimientos.length" class="empty-inline">Sin vencimientos criticos.</p>
+            </div>
+          </article>
+        </section>
+      </ng-container>
+    </section>
+  </section>
+
   <section class="acuerdos-layout form-only" *ngIf="activeTab === 'importar-ubicaciones'">
     <section class="acuerdos-panel acuerdos-form">
       <div class="panel-title">
@@ -403,7 +659,7 @@
         </div>
         <label class="map-select">
           Sucursal
-          <select name="mapaSucursal" [(ngModel)]="mapaSucursal">
+          <select name="mapaSucursal" [(ngModel)]="mapaSucursal" (change)="cargarMapaUbicaciones()">
             <option value="aregua">Aregua</option>
             <option value="luque">Luque</option>
             <option value="itaugua">Itaugua</option>
@@ -417,9 +673,55 @@
         <span class="block-c">Verde: bloque C</span>
         <span class="block-d">Amarillo: bloque D</span>
       </div>
+      <div class="map-status-legend">
+        <span class="map-free">Libre</span>
+        <span class="map-occupied">Ocupado</span>
+        <span class="map-negotiation">En negociación</span>
+        <span class="map-risk">Vencido / por vencer</span>
+      </div>
+      <div class="map-filters">
+        <label>
+          Estado
+          <select name="mapFiltroEstado" [(ngModel)]="mapaFiltroEstado">
+            <option value="todos">Todos</option>
+            <option value="libres">Libres</option>
+            <option value="ocupados">Ocupados</option>
+          </select>
+        </label>
+        <label>
+          Proveedor
+          <select name="mapFiltroProveedor" [(ngModel)]="mapaFiltroProveedorId">
+            <option [ngValue]="null">Todos</option>
+            <option *ngFor="let proveedor of proveedores()" [ngValue]="proveedor.id">{{ proveedor.nombre }}</option>
+          </select>
+        </label>
+        <label>
+          Bloque
+          <select name="mapFiltroBloque" [(ngModel)]="mapaFiltroBloque">
+            <option value="">Todos</option>
+            <option value="A">A</option>
+            <option value="B">B</option>
+            <option value="C">C</option>
+            <option value="D">D</option>
+            <option value="PA">Perfumeria PA</option>
+            <option value="PB">Perfumeria PB</option>
+            <option value="LC">Linea de caja</option>
+            <option value="PAN">Panaderia</option>
+          </select>
+        </label>
+        <label>
+          Tipo
+          <select name="mapFiltroTipo" [(ngModel)]="mapaFiltroTipo">
+            <option value="">Todos</option>
+            <option value="puntera">Punteras</option>
+            <option value="pestana">Pestañas</option>
+          </select>
+        </label>
+        <button type="button" class="secondary mini-button" (click)="limpiarFiltrosMapa()">Limpiar</button>
+      </div>
 
       <div class="store-map">
-        <section class="map-block" *ngFor="let bloque of mapaBloques" [ngClass]="bloque.className">
+        <section class="map-block" *ngFor="let bloque of mapaBloquesVisibles()" [ngClass]="bloque.className">
           <div class="block-label">{{ bloque.label }}</div>
           <div class="gondola-row">
             <article class="gondola" *ngFor="let slot of mapaUbicacionesPorBloque(bloque.key)">
@@ -427,29 +729,104 @@
               <div class="gondola-body">
                 <div
                   class="puntera-slot"
-                  [class.occupied]="slot.puntera && !esUbicacionLibre(slot.puntera)"
-                  [class.free-place]="!slot.puntera || esUbicacionLibre(slot.puntera)"
-                  [title]="slot.puntera && !esUbicacionLibre(slot.puntera) ? slot.puntera.proveedor_nombre : 'Libre'"
+                  [ngClass]="mapaEstadoClass(slot.puntera)"
+                  [class.hidden-place]="!slot.puntera"
+                  [title]="slot.puntera && !esUbicacionLibre(slot.puntera) ? slot.puntera.proveedor_nombre : (slot.puntera ? 'Libre' : '')"
                   (dblclick)="verMapaUbicacion(slot.puntera)"
                 >
-                  <span>{{ slot.puntera && !esUbicacionLibre(slot.puntera) ? slot.puntera.proveedor_nombre : 'Libre' }}</span>
-                  <small>{{ slot.puntera?.codigo || (bloque.key + '-' + slot.numero + '-P') }}</small>
+                  <span *ngIf="slot.puntera">{{ !esUbicacionLibre(slot.puntera) ? slot.puntera.proveedor_nombre : 'Libre' }}</span>
+                  <small *ngIf="slot.puntera">{{ slot.puntera.codigo }}</small>
                 </div>
                 <div class="pestanas-slot">
                   <span
                     *ngFor="let pestana of slot.pestanas"
                     class="pestana-pill"
-                    [class.free-place]="esUbicacionLibre(pestana)"
+                    [ngClass]="mapaEstadoClass(pestana)"
                     [title]="esUbicacionLibre(pestana) ? 'Libre' : pestana.proveedor_nombre"
                     (dblclick)="verMapaUbicacion(pestana)"
                   >
-                    {{ pestana.codigo || pestana.ubicacion }} - {{ esUbicacionLibre(pestana) ? 'Libre' : pestana.proveedor_nombre }}
+                    {{ lateralLabel(pestana) }}
                   </span>
-                  <span class="pestana-pill empty" *ngIf="!slot.pestanas.length">Sin pestañas</span>
+                  <span class="pestana-pill empty" *ngIf="!slot.pestanas.length && !slot.pestanasCatalogo.length">Sin pestañas</span>
                 </div>
               </div>
             </article>
           </div>
+        </section>
+        <section class="perfumeria-map" *ngIf="mapaPerfumeriaBloquesVisibles().length">
+          <div class="perfumeria-title">Perfumeria</div>
+          <section class="map-block perfumeria-block" *ngFor="let bloque of mapaPerfumeriaBloquesVisibles()" [ngClass]="bloque.className">
+            <div class="block-label">{{ bloque.label }}</div>
+            <div class="gondola-row perfumeria-row">
+              <article class="gondola" *ngFor="let slot of mapaUbicacionesPorBloque(bloque.key, bloque.numeros)">
+                <strong>{{ bloque.key }}-{{ slot.numero }}</strong>
+                <div class="gondola-body">
+                  <div
+                    class="puntera-slot"
+                    [ngClass]="mapaEstadoClass(slot.puntera)"
+                    [class.hidden-place]="!slot.puntera"
+                    [title]="slot.puntera && !esUbicacionLibre(slot.puntera) ? slot.puntera.proveedor_nombre : (slot.puntera ? 'Libre' : '')"
+                    (dblclick)="verMapaUbicacion(slot.puntera)"
+                  >
+                    <span *ngIf="slot.puntera">{{ !esUbicacionLibre(slot.puntera) ? slot.puntera.proveedor_nombre : 'Libre' }}</span>
+                    <small *ngIf="slot.puntera">{{ slot.puntera.codigo }}</small>
+                  </div>
+                  <div class="pestanas-slot">
+                    <span
+                      *ngFor="let pestana of slot.pestanas"
+                      class="pestana-pill"
+                      [ngClass]="mapaEstadoClass(pestana)"
+                      [title]="esUbicacionLibre(pestana) ? 'Libre' : pestana.proveedor_nombre"
+                      (dblclick)="verMapaUbicacion(pestana)"
+                    >
+                      {{ lateralLabel(pestana) }}
+                    </span>
+                    <span class="pestana-pill empty" *ngIf="!slot.pestanas.length && !slot.pestanasCatalogo.length">Sin laterales</span>
+                  </div>
+                </div>
+              </article>
+            </div>
+          </section>
+        </section>
+        <section class="linea-caja-map" *ngIf="mapaLineaCajaBloquesVisibles().length">
+          <div class="linea-caja-title">Linea de caja</div>
+          <section class="map-block linea-caja-block" *ngFor="let bloque of mapaLineaCajaBloquesVisibles()" [ngClass]="bloque.className">
+            <div class="gondola-row linea-caja-row">
+              <article class="gondola linea-caja-slot" *ngFor="let slot of mapaUbicacionesPorBloque(bloque.key, bloque.numeros)">
+                <strong>{{ slot.puntera?.codigo || slot.punteraCatalogo?.codigo || 'LC' }}</strong>
+                <div
+                  class="puntera-slot"
+                  [ngClass]="mapaEstadoClass(slot.puntera)"
+                  [class.hidden-place]="!slot.puntera"
+                  [title]="slot.puntera && !esUbicacionLibre(slot.puntera) ? slot.puntera.proveedor_nombre : (slot.puntera ? 'Libre' : '')"
+                  (dblclick)="verMapaUbicacion(slot.puntera)"
+                >
+                  <span *ngIf="slot.puntera">{{ !esUbicacionLibre(slot.puntera) ? slot.puntera.proveedor_nombre : 'Libre' }}</span>
+                  <small *ngIf="slot.puntera">{{ slot.puntera.codigo }}</small>
+                </div>
+              </article>
+            </div>
+          </section>
+        </section>
+        <section class="panaderia-map" *ngIf="mapaPanaderiaBloquesVisibles().length">
+          <div class="panaderia-title">Panaderia</div>
+          <section class="map-block panaderia-block" *ngFor="let bloque of mapaPanaderiaBloquesVisibles()" [ngClass]="bloque.className">
+            <div class="gondola-row panaderia-row">
+              <article class="gondola panaderia-slot" *ngFor="let slot of mapaUbicacionesPorBloque(bloque.key, bloque.numeros)">
+                <strong>{{ slot.puntera?.codigo || slot.punteraCatalogo?.codigo || 'PAN' }}</strong>
+                <div
+                  class="puntera-slot"
+                  [ngClass]="mapaEstadoClass(slot.puntera)"
+                  [class.hidden-place]="!slot.puntera"
+                  [title]="slot.puntera && !esUbicacionLibre(slot.puntera) ? slot.puntera.proveedor_nombre : (slot.puntera ? 'Libre' : '')"
+                  (dblclick)="verMapaUbicacion(slot.puntera)"
+                >
+                  <span *ngIf="slot.puntera">{{ !esUbicacionLibre(slot.puntera) ? slot.puntera.proveedor_nombre : 'Libre' }}</span>
+                  <small *ngIf="slot.puntera">{{ slot.puntera.codigo }}</small>
+                </div>
+              </article>
+            </div>
+          </section>
         </section>
       </div>
     </section>
@@ -485,9 +862,206 @@
             <strong>{{ lugar.detalle || '-' }}</strong>
           </div>
         </div>
+        <div class="map-assign-box">
+          <label *ngIf="canEditValoresUbicaciones()">
+            Valor fijo del lugar
+            <input type="text" name="mapaAsignacionValor" [(ngModel)]="mapaAsignacionValor" placeholder="2000000">
+          </label>
+          <button
+            *ngIf="canEditValoresUbicaciones()"
+            type="button"
+            class="secondary"
+            (click)="guardarValorMapaUbicacion(lugar)"
+            [disabled]="loading()"
+          >
+            Guardar valor
+          </button>
+          <label>
+            Asignar a proveedor
+            <select name="proveedorAsignacion" [(ngModel)]="proveedorAsignacionId">
+              <option [ngValue]="null">Seleccionar proveedor</option>
+              <option *ngFor="let proveedor of proveedores()" [ngValue]="proveedor.id">{{ proveedor.nombre }}</option>
+            </select>
+          </label>
+          <button
+            type="button"
+            class="secondary"
+            *ngIf="lugar.acuerdo_id && !esUbicacionLibre(lugar)"
+            (click)="abrirAcuerdoActualDesdeMapa(lugar)"
+          >
+            Abrir acuerdo actual
+          </button>
+          <button type="button" (click)="asignarMapaAProveedor(lugar)">Asignar a acuerdo</button>
+        </div>
+      </section>
+    </div>
+
+    <div class="map-modal-backdrop" *ngIf="selectorUbicacionIndex() !== null" (click)="cerrarSelectorUbicacion()">
+      <section class="map-modal map-picker-modal" (click)="$event.stopPropagation()">
+        <div class="panel-title">
+          <div>
+            <h2>Seleccionar ubicacion</h2>
+            <span>Doble click sobre una puntera o lateral para usarla en el acuerdo.</span>
+          </div>
+          <button type="button" class="secondary mini-button" (click)="cerrarSelectorUbicacion()">Cerrar</button>
+        </div>
+        <div class="store-map picker-map">
+          <section class="map-block" *ngFor="let bloque of mapaBloques" [ngClass]="bloque.className">
+            <div class="block-label">{{ bloque.label }}</div>
+            <div class="gondola-row">
+              <article class="gondola" *ngFor="let slot of mapaUbicacionesPorBloque(bloque.key)">
+                <strong>{{ bloque.key }}-{{ slot.numero }}</strong>
+                <div class="gondola-body">
+                  <div
+                    class="puntera-slot"
+                    [ngClass]="mapaEstadoClass(slot.puntera || slot.punteraCatalogo)"
+                    [class.hidden-place]="!slot.punteraCatalogo"
+                    (dblclick)="seleccionarUbicacionDesdeMapa(slot.puntera || slot.punteraCatalogo)"
+                  >
+                    <span *ngIf="slot.punteraCatalogo">{{ slot.puntera && !esUbicacionLibre(slot.puntera) ? slot.puntera.proveedor_nombre : 'Libre' }}</span>
+                    <small *ngIf="slot.punteraCatalogo">{{ slot.punteraCatalogo.codigo }}</small>
+                  </div>
+                  <div class="pestanas-slot">
+                    <span
+                      *ngFor="let pestana of slot.pestanasCatalogo"
+                      class="pestana-pill"
+                      [ngClass]="mapaEstadoClass(pestana)"
+                      [title]="esUbicacionLibre(pestana) ? 'Libre' : pestana.proveedor_nombre"
+                      (dblclick)="seleccionarUbicacionDesdeMapa(pestana)"
+                    >
+                      {{ lateralLabel(pestana) }}
+                    </span>
+                    <span class="pestana-pill empty" *ngIf="!slot.pestanasCatalogo.length">Sin pestañas</span>
+                  </div>
+                </div>
+              </article>
+            </div>
+          </section>
+        </div>
       </section>
     </div>
   </section>
+
+  <div class="map-modal-backdrop" *ngIf="selectorUbicacionIndex() !== null && activeTab !== 'mapa'" (click)="cerrarSelectorUbicacion()">
+    <section class="map-modal map-picker-modal" (click)="$event.stopPropagation()">
+      <div class="panel-title">
+        <div>
+          <h2>Seleccionar ubicacion</h2>
+          <span>Doble click sobre una puntera o lateral para usarla en el acuerdo.</span>
+        </div>
+        <button type="button" class="secondary mini-button" (click)="cerrarSelectorUbicacion()">Cerrar</button>
+      </div>
+      <div class="store-map picker-map">
+        <section class="map-block" *ngFor="let bloque of mapaBloques" [ngClass]="bloque.className">
+          <div class="block-label">{{ bloque.label }}</div>
+          <div class="gondola-row">
+            <article class="gondola" *ngFor="let slot of mapaUbicacionesPorBloque(bloque.key)">
+              <strong>{{ bloque.key }}-{{ slot.numero }}</strong>
+              <div class="gondola-body">
+                <div
+                  class="puntera-slot"
+                  [ngClass]="mapaEstadoClass(slot.puntera || slot.punteraCatalogo)"
+                  [class.hidden-place]="!slot.punteraCatalogo"
+                  (click)="seleccionarUbicacionDesdeMapa(slot.punteraCatalogo)"
+                  (dblclick)="seleccionarUbicacionDesdeMapa(slot.punteraCatalogo)"
+                >
+                  <span *ngIf="slot.punteraCatalogo">{{ slot.puntera && !esUbicacionLibre(slot.puntera) ? slot.puntera.proveedor_nombre : 'Libre' }}</span>
+                  <small *ngIf="slot.punteraCatalogo">{{ slot.punteraCatalogo.codigo }}</small>
+                </div>
+                <div class="pestanas-slot">
+                  <span
+                    *ngFor="let pestana of slot.pestanasCatalogo"
+                    class="pestana-pill"
+                    [ngClass]="mapaEstadoClass(pestana)"
+                    [title]="esUbicacionLibre(pestana) ? 'Libre' : pestana.proveedor_nombre"
+                    (click)="seleccionarUbicacionDesdeMapa(pestana)"
+                    (dblclick)="seleccionarUbicacionDesdeMapa(pestana)"
+                  >
+                    {{ lateralLabel(pestana) }}
+                  </span>
+                  <span class="pestana-pill empty" *ngIf="!slot.pestanasCatalogo.length">Sin pestañas</span>
+                </div>
+              </div>
+            </article>
+          </div>
+        </section>
+        <section class="perfumeria-map">
+          <div class="perfumeria-title">Perfumeria</div>
+          <section class="map-block perfumeria-block" *ngFor="let bloque of mapaPerfumeriaBloques" [ngClass]="bloque.className">
+            <div class="block-label">{{ bloque.label }}</div>
+            <div class="gondola-row perfumeria-row">
+              <article class="gondola" *ngFor="let slot of mapaUbicacionesPorBloque(bloque.key, bloque.numeros)">
+                <strong>{{ bloque.key }}-{{ slot.numero }}</strong>
+                <div class="gondola-body">
+                  <div
+                    class="puntera-slot"
+                    [ngClass]="mapaEstadoClass(slot.puntera || slot.punteraCatalogo)"
+                    [class.hidden-place]="!slot.punteraCatalogo"
+                    (dblclick)="seleccionarUbicacionDesdeMapa(slot.puntera || slot.punteraCatalogo)"
+                  >
+                    <span *ngIf="slot.punteraCatalogo">{{ slot.puntera && !esUbicacionLibre(slot.puntera) ? slot.puntera.proveedor_nombre : 'Libre' }}</span>
+                    <small *ngIf="slot.punteraCatalogo">{{ slot.punteraCatalogo.codigo }}</small>
+                  </div>
+                  <div class="pestanas-slot">
+                    <span
+                      *ngFor="let pestana of slot.pestanasCatalogo"
+                      class="pestana-pill"
+                      [ngClass]="mapaEstadoClass(pestana)"
+                      [title]="esUbicacionLibre(pestana) ? 'Libre' : pestana.proveedor_nombre"
+                      (dblclick)="seleccionarUbicacionDesdeMapa(pestana)"
+                    >
+                      {{ lateralLabel(pestana) }}
+                    </span>
+                    <span class="pestana-pill empty" *ngIf="!slot.pestanasCatalogo.length">Sin laterales</span>
+                  </div>
+                </div>
+              </article>
+            </div>
+          </section>
+        </section>
+        <section class="linea-caja-map">
+          <div class="linea-caja-title">Linea de caja</div>
+          <section class="map-block linea-caja-block" *ngFor="let bloque of mapaLineaCajaBloques" [ngClass]="bloque.className">
+            <div class="gondola-row linea-caja-row">
+              <article class="gondola linea-caja-slot" *ngFor="let slot of mapaUbicacionesPorBloque(bloque.key, bloque.numeros)">
+                <strong>{{ slot.puntera?.codigo || slot.punteraCatalogo?.codigo || 'LC' }}</strong>
+                <div
+                  class="puntera-slot"
+                  [ngClass]="mapaEstadoClass(slot.puntera || slot.punteraCatalogo)"
+                  [class.hidden-place]="!slot.punteraCatalogo"
+                  (click)="seleccionarUbicacionDesdeMapa(slot.puntera || slot.punteraCatalogo)"
+                  (dblclick)="seleccionarUbicacionDesdeMapa(slot.puntera || slot.punteraCatalogo)"
+                >
+                  <span *ngIf="slot.punteraCatalogo">{{ slot.puntera && !esUbicacionLibre(slot.puntera) ? slot.puntera.proveedor_nombre : 'Libre' }}</span>
+                  <small *ngIf="slot.punteraCatalogo">{{ slot.punteraCatalogo.codigo }}</small>
+                </div>
+              </article>
+            </div>
+          </section>
+        </section>
+        <section class="panaderia-map">
+          <div class="panaderia-title">Panaderia</div>
+          <section class="map-block panaderia-block" *ngFor="let bloque of mapaPanaderiaBloques" [ngClass]="bloque.className">
+            <div class="gondola-row panaderia-row">
+              <article class="gondola panaderia-slot" *ngFor="let slot of mapaUbicacionesPorBloque(bloque.key, bloque.numeros)">
+                <strong>{{ slot.puntera?.codigo || slot.punteraCatalogo?.codigo || 'PAN' }}</strong>
+                <div
+                  class="puntera-slot"
+                  [ngClass]="mapaEstadoClass(slot.puntera || slot.punteraCatalogo)"
+                  [class.hidden-place]="!slot.punteraCatalogo"
+                  (click)="seleccionarUbicacionDesdeMapa(slot.puntera || slot.punteraCatalogo)"
+                  (dblclick)="seleccionarUbicacionDesdeMapa(slot.puntera || slot.punteraCatalogo)"
+                >
+                  <span *ngIf="slot.punteraCatalogo">{{ slot.puntera && !esUbicacionLibre(slot.puntera) ? slot.puntera.proveedor_nombre : 'Libre' }}</span>
+                  <small *ngIf="slot.punteraCatalogo">{{ slot.punteraCatalogo.codigo }}</small>
+                </div>
+              </article>
+            </div>
+          </section>
+        </section>
+      </div>
+    </section>
+  </div>
 
   <section class="acuerdos-layout cargados-layout" *ngIf="activeTab === 'historial-proveedor'">
     <section class="acuerdos-panel">
@@ -525,6 +1099,8 @@
             <span>{{ acuerdo.activo ? 'Activo' : 'Inactivo' }}</span>
             <span>{{ acuerdo.ubicaciones_count }} ubicaciones</span>
             <span>{{ acuerdo.punteras_count }} punteras</span>
+            <span>{{ contarPestanas(acuerdo.ubicaciones) }} pestañas</span>
+            <span>{{ contarLineaCaja(acuerdo.ubicaciones) }} linea de caja</span>
           </div>
           <ul>
             <li *ngFor="let group of ubicacionesPorTipo(acuerdo.ubicaciones)">

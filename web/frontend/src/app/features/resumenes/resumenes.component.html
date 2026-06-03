@@ -47,7 +47,7 @@
           </label>
           <label>
             Max. filas
-            <input type="number" min="1" step="1" name="resumenMaxFilas" [(ngModel)]="resumenMaxFilas">
+            <input type="number" min="1" step="1" name="resumenMaxFilas" [ngModel]="resumenMaxFilas()" (ngModelChange)="resumenMaxFilas.set($event)">
           </label>
           <button type="button" (click)="cargarResumenes()" [disabled]="resumenLoading()">Aplicar</button>
           <button type="button" class="secondary" (click)="marcarResumenesComoCerrados()" [disabled]="resumenLoading() || resumenSeleccionados.size === 0">Marcar como cerrado</button>
@@ -86,6 +86,9 @@
               <strong>Dif. Kg total: {{ (resumenSeleccionTotal().dif_kg | fmtNumber:2) }}</strong>
               <span>|</span>
               <strong>Reces: {{ (resumenSeleccionTotal().cabezas | fmtNumber) }}</strong>
+              <button type="button" class="secondary mini-button" (click)="abrirDistribucionesDetalle()" [disabled]="resumenLoading() || resumenSeleccionados.size === 0">
+                Ver distribuciones a detalle
+              </button>
             </div>
             <div class="table-wrap">
               <table class="compact-table selected-summary-table">
@@ -168,7 +171,56 @@
             </tbody>
           </table>
         </div>
+        <div class="load-more-row" *ngIf="resumenLotesFiltrados().length < resumenTotalFiltrado()">
+          <span>Mostrando {{ resumenLotesFiltrados().length }} de {{ resumenTotalFiltrado() }} lotes</span>
+          <button type="button" class="secondary" (click)="cargarDiezMasResumenes()">Cargar 10 mas</button>
+          <button type="button" class="secondary" (click)="cargarTodosResumenes()">Cargar todos</button>
+        </div>
 
       </section>
+
+      <div class="modal-backdrop" *ngIf="distribucionesDetalleOpen()" (click)="cerrarDistribucionesDetalle()">
+        <section class="modal-card distribuciones-detalle-modal" role="dialog" aria-modal="true" aria-label="Distribuciones a detalle" (click)="$event.stopPropagation()">
+          <div class="panel-title">
+            <div>
+              <h2>Distribuciones a detalle</h2>
+              <p class="muted">{{ distribucionesDetalleLotesLabel() }}</p>
+            </div>
+            <button type="button" class="secondary mini-button" (click)="cerrarDistribucionesDetalle()">Cerrar</button>
+          </div>
+
+          <div class="table-wrap distribution-history-wrap">
+            <table class="recepcion-table distribution-history-table">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Lote</th>
+                  <th>Fecha</th>
+                  <th>Local</th>
+                  <th>Kg</th>
+                  <th>Dif. Kg</th>
+                  <th>Reces</th>
+                  <th>Nota</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr *ngFor="let row of resumen.distribucionesDetalle" [class.zero-kg-row]="row.kg == 0">
+                  <td>{{ row.id }}</td>
+                  <td>{{ row.lote }}</td>
+                  <td>{{ row.fecha }}</td>
+                  <td>{{ row.local }}</td>
+                  <td>{{ (row.kg | fmtNumber:2) }} <span *ngIf="row.kg == 0" class="flag zero-kg-flag" title="Kg en cero"></span></td>
+                  <td>{{ (row.diferencia_kg | fmtNumber:2) }}</td>
+                  <td>{{ (row.cabezas | fmtNumber) }}</td>
+                  <td class="note-cell"><span class="note-preview">{{ row.nota || '-' }}</span></td>
+                </tr>
+                <tr *ngIf="!resumen.distribucionesDetalle.length">
+                  <td colspan="8" class="empty-cell">No hay distribuciones para los lotes seleccionados.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
     </ng-container>
 </section>

@@ -127,6 +127,30 @@
       </article>
     </section>
 
+    <section class="panel menudencias-report-panel">
+      <div class="panel-title"><h2>Resumen de menudencias</h2><span>PDF general y por sucursal</span></div>
+      <form class="filters" (ngSubmit)="imprimirMenudenciasPdf()">
+        <label>
+          Periodo
+          <select name="menudenciasPeriodo" [(ngModel)]="menudenciasPeriodo" (change)="aplicarPeriodoMenudencias()">
+            <option value="semana-pasada">Semana pasada</option>
+            <option value="este-mes">Este mes</option>
+            <option value="mes-anterior">Mes anterior</option>
+            <option value="personalizado">Personalizado</option>
+          </select>
+        </label>
+        <label>
+          Desde
+          <input type="date" name="menudenciasDesde" [(ngModel)]="menudenciasDesde" (change)="marcarMenudenciasPersonalizado()">
+        </label>
+        <label>
+          Hasta
+          <input type="date" name="menudenciasHasta" [(ngModel)]="menudenciasHasta" (change)="marcarMenudenciasPersonalizado()">
+        </label>
+        <button type="submit" [disabled]="loading()">Imprimir resumen</button>
+      </form>
+    </section>
+
     <section class="menudencias-grid">
       <article class="panel">
         <div class="panel-title"><h2>Top menudencias</h2><span>Por kg</span></div>

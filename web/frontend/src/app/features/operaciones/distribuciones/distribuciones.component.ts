@@ -103,10 +103,6 @@ export class DistribucionesComponent implements OnInit {
     };
   }
 
-  distribucionesPorLocalDetalle(local: string): DistribucionRow[] {
-    return (this.distribuciones()?.distribuciones ?? []).filter((row) => row.local === local);
-  }
-
   distribucionDetalle(): DistribucionRow | null {
     return (this.distribuciones()?.distribuciones ?? []).find((row) => row.id === this.distribucionDetalleId) ?? null;
   }

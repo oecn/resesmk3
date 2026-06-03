@@ -7,56 +7,303 @@
     <div class="panel-title">
       <div>
         <h2>Contratos</h2>
-        <p>Registro de partes, vigencia, monto y clausulas importantes.</p>
+        <p>Registro documental, naturaleza, vigencia y datos principales.</p>
       </div>
       <span>{{ data()?.items?.length ?? 0 }} registros</span>
     </div>
 
-    <form class="form-grid" (ngSubmit)="guardarContrato()">
-      <label>
-        Inicio de contrato
-        <input type="date" name="contratoInicio" [(ngModel)]="contratoForm.inicio_contrato" required>
-      </label>
-      <label>
-        Duracion en meses
-        <input type="number" min="1" name="contratoDuracion" [(ngModel)]="contratoForm.duracion_meses">
-      </label>
-      <label>
-        Fecha fin
-        <input type="date" name="contratoFin" [ngModel]="fechaFinContrato(contratoForm)" readonly>
-      </label>
-      <label>
-        Monto de contrato
-        <input type="text" name="contratoMonto" [(ngModel)]="contratoForm.monto_contrato" placeholder="0">
-      </label>
-      <div class="expiry-form">
-        <span>Vencimiento</span>
-        <strong class="expiry-badge" [ngClass]="vencimientoClass(contratoForm)">{{ vencimientoLabel(contratoForm) }}</strong>
+    <nav class="section-tabs" aria-label="Secciones de contratos">
+      <button
+        type="button"
+        *ngFor="let seccion of secciones"
+        [class.active]="seccionActiva === seccion.value"
+        (click)="cambiarSeccion(seccion.value)"
+      >
+        {{ seccion.label }}
+      </button>
+    </nav>
+
+    <form class="form-grid" *ngIf="seccionActiva === 'nuevo'" (ngSubmit)="guardarContrato()">
+      <div class="form-section-title wide-field">
+        <strong>Seleccion del documento</strong>
+        <span>Primero elegi el tipo y la categoria para mostrar los campos correctos.</span>
       </div>
-      <label>
-        Quien ofrece el contrato
-        <input type="text" name="contratoOfrece" [(ngModel)]="contratoForm.ofrece_contrato" required>
-      </label>
-      <label>
-        El que contrata
-        <input type="text" name="contratoContratante" [(ngModel)]="contratoForm.contratante" required>
-      </label>
       <label class="wide-field">
-        Contexto
-        <textarea name="contratoContexto" rows="3" [(ngModel)]="contratoForm.contexto"></textarea>
+        Nombre del documento
+        <input type="text" name="nombreDocumento" [(ngModel)]="contratoForm.nombre_documento" placeholder="Nombre visible del documento">
       </label>
-      <label class="wide-field">
-        Clausulas importantes
-        <textarea name="contratoClausulas" rows="3" [(ngModel)]="contratoForm.clausulas_importantes"></textarea>
+      <label>
+        Tipo
+        <select name="tipoDocumento" [(ngModel)]="contratoForm.tipo_documento">
+          <option *ngFor="let tipo of tiposDocumento" [value]="tipo.value">{{ tipo.label }}</option>
+        </select>
       </label>
-      <div class="form-actions">
+      <label>
+        Categoria
+        <select name="categoriaDocumento" [(ngModel)]="contratoForm.categoria">
+          <option *ngFor="let categoria of categorias" [value]="categoria.value">{{ categoria.label }}</option>
+        </select>
+      </label>
+
+      <ng-container *ngIf="esCategoriaPublicidad()">
+        <div class="form-section-title wide-field">
+          <strong>Datos principales</strong>
+          <span>Vigencia y archivo fisico del contrato publicitario.</span>
+        </div>
+        <label>
+          Estado
+          <select name="estadoDocumentoTv" [(ngModel)]="contratoForm.estado_documento">
+            <option *ngFor="let estado of estadosDocumento" [value]="estado.value">{{ estado.label }}</option>
+          </select>
+        </label>
+        <label>
+          Fecha de inicio
+          <input type="date" name="inicioTv" [(ngModel)]="contratoForm.inicio_contrato" required>
+        </label>
+        <label>
+          Fecha de fin
+          <input type="date" name="finTv" [(ngModel)]="contratoForm.fecha_fin">
+        </label>
+        <label>
+          Duracion en meses
+          <input type="number" min="1" name="duracionPublicidad" [(ngModel)]="contratoForm.duracion_meses" (ngModelChange)="actualizarFechaFinPorDuracion()">
+        </label>
+        <label>
+          Bibliorato
+          <input type="text" name="biblioratoTv" [(ngModel)]="contratoForm.bibliorato">
+        </label>
+
+        <div class="form-section-title wide-field">
+          <strong>Partes</strong>
+          <span>Tu empresa y el canal o proveedor contratado.</span>
+        </div>
+        <label>
+          Empresa titular
+          <input type="text" name="empresaTitularTv" [(ngModel)]="contratoForm.ofrece_contrato" required>
+        </label>
+        <label>
+          Empresa encargada
+          <input type="text" name="proveedorTv" [(ngModel)]="contratoForm.contratante" required>
+        </label>
+
+        <div class="form-section-title wide-field">
+          <strong>Datos de publicidad</strong>
+          <span>Radio o medio, programa e informacion crucial del contrato.</span>
+        </div>
+        <label>
+          Radio / medio
+          <input type="text" name="medioPublicidad" [(ngModel)]="contratoForm.medio_publicidad">
+        </label>
+        <label>
+          Programa donde se promociona
+          <input type="text" name="programaPublicidad" [(ngModel)]="contratoForm.programa_publicidad">
+        </label>
+        <label class="wide-field">
+          Informacion crucial del contrato
+          <textarea name="clausulasTv" rows="3" [(ngModel)]="contratoForm.clausulas_importantes"></textarea>
+        </label>
+        <div class="form-actions">
+          <button type="button" class="secondary" *ngIf="contratoForm.id" (click)="cancelarEdicion()">Cancelar</button>
+          <button type="submit" [disabled]="loading()">{{ contratoForm.id ? 'Actualizar' : 'Guardar' }} contrato</button>
+        </div>
+      </ng-container>
+
+      <ng-container *ngIf="esTerreno()">
+        <div class="form-section-title wide-field">
+          <strong>Datos principales</strong>
+          <span>Vigencia, archivo fisico y seguimiento interno.</span>
+        </div>
+        <label>
+          Naturaleza automatica
+          <input type="text" name="naturalezaDocumento" [value]="naturalezaCalculada()" readonly>
+        </label>
+        <label>
+          Estado
+          <select name="estadoDocumento" [(ngModel)]="contratoForm.estado_documento">
+            <option *ngFor="let estado of estadosDocumento" [value]="estado.value">{{ estado.label }}</option>
+          </select>
+        </label>
+        <label>
+          Fecha de firma
+          <input type="date" name="contratoInicio" [(ngModel)]="contratoForm.inicio_contrato" required>
+        </label>
+        <label>
+          Bibliorato
+          <input type="text" name="bibliorato" [(ngModel)]="contratoForm.bibliorato">
+        </label>
+        <div class="form-section-title wide-field">
+          <strong>Partes de la compra</strong>
+          <span>Comprador y vendedor del inmueble.</span>
+        </div>
+        <label>
+          Comprador
+          <input type="text" name="contratoOfrece" [(ngModel)]="contratoForm.ofrece_contrato" required>
+        </label>
+        <label>
+          Vendedor
+          <input type="text" name="contratoContratante" [(ngModel)]="contratoForm.contratante" required>
+        </label>
+
+        <div class="form-section-title wide-field">
+          <strong>Datos del terreno</strong>
+          <span>Informacion registral y ubicacion del inmueble.</span>
+        </div>
+        <label>
+          Ciudad
+          <input type="text" name="localidad" [(ngModel)]="contratoForm.localidad">
+        </label>
+        <label>
+          Cuenta catastral
+          <input type="text" name="cuentaCatastral" [(ngModel)]="contratoForm.cuenta_catastral">
+        </label>
+        <label>
+          Finca / matricula
+          <input type="text" name="fincaMatricula" [(ngModel)]="contratoForm.finca_matricula">
+        </label>
+        <label>
+          Superficie
+          <input type="text" name="superficie" [(ngModel)]="contratoForm.superficie">
+        </label>
+        <label>
+          Departamento
+          <input type="text" name="departamento" [(ngModel)]="contratoForm.departamento">
+        </label>
+
+        <div class="form-section-title wide-field">
+          <strong>Notas</strong>
+          <span>Resumen operativo y puntos importantes.</span>
+        </div>
+        <label class="wide-field">
+          Contexto
+          <textarea name="contratoContexto" rows="3" [(ngModel)]="contratoForm.contexto"></textarea>
+        </label>
+        <label class="wide-field">
+          Clausulas importantes
+          <textarea name="contratoClausulas" rows="3" [(ngModel)]="contratoForm.clausulas_importantes"></textarea>
+        </label>
+        <div class="form-actions">
+          <button type="button" class="secondary" *ngIf="contratoForm.id" (click)="cancelarEdicion()">Cancelar</button>
+          <button type="submit" [disabled]="loading()">{{ contratoForm.id ? 'Actualizar' : 'Guardar' }} contrato</button>
+        </div>
+      </ng-container>
+
+      <ng-container *ngIf="esFormularioGeneral()">
+        <div class="form-section-title wide-field">
+          <strong>Datos principales</strong>
+          <span>Para contratos o documentos que todavia no tienen formulario especifico.</span>
+        </div>
+        <label>
+          Estado
+          <select name="estadoDocumentoGeneral" [(ngModel)]="contratoForm.estado_documento">
+            <option *ngFor="let estado of estadosDocumento" [value]="estado.value">{{ estado.label }}</option>
+          </select>
+        </label>
+        <label>
+          Fecha de inicio
+          <input type="date" name="inicioGeneral" [(ngModel)]="contratoForm.inicio_contrato" required>
+        </label>
+        <label>
+          Fecha de fin
+          <input type="date" name="finGeneral" [(ngModel)]="contratoForm.fecha_fin">
+        </label>
+        <label>
+          Duracion en meses
+          <input type="number" min="1" name="duracionGeneral" [(ngModel)]="contratoForm.duracion_meses" (ngModelChange)="actualizarFechaFinPorDuracion()">
+        </label>
+        <label>
+          Ubicacion / bibliorato
+          <input type="text" name="biblioratoGeneral" [(ngModel)]="contratoForm.bibliorato">
+        </label>
+        <label>
+          Sucursal / Empresa
+          <input type="text" name="contratoSucursalGeneral" [(ngModel)]="contratoForm.sucursal" placeholder="LUQUE, AREGUA, ITAUGUA o EL CACIQUE">
+        </label>
+
+        <div class="form-section-title wide-field">
+          <strong>Partes del contrato</strong>
+          <span>Entidad de El Cacique o sucursal y la contraparte.</span>
+        </div>
+        <label>
+          El Cacique / sucursal
+          <input type="text" name="ofreceGeneral" [(ngModel)]="contratoForm.ofrece_contrato" required>
+        </label>
+        <label>
+          Contraparte
+          <input type="text" name="contratanteGeneral" [(ngModel)]="contratoForm.contratante" required>
+        </label>
+
+        <div class="form-section-title wide-field">
+          <strong>Informacion importante</strong>
+          <span>Condiciones, obligaciones, pagos, renovacion, riesgos o cualquier punto clave.</span>
+        </div>
+        <label class="wide-field">
+          Informacion importante del contrato
+          <textarea name="infoGeneral" rows="5" [(ngModel)]="contratoForm.clausulas_importantes"></textarea>
+        </label>
+        <label class="wide-field">
+          Contexto / observaciones
+          <textarea name="contextoGeneral" rows="3" [(ngModel)]="contratoForm.contexto"></textarea>
+        </label>
+      </ng-container>
+
+      <ng-container *ngIf="esVehiculo()">
+        <div class="form-section-title wide-field">
+          <strong>Datos del vehiculo</strong>
+          <span>Identificacion del rodado y estado de transferencia.</span>
+        </div>
+        <label>
+          Marca
+          <input type="text" name="marcaVehiculo" [(ngModel)]="contratoForm.marca">
+        </label>
+        <label>
+          Modelo
+          <input type="text" name="modeloVehiculo" [(ngModel)]="contratoForm.modelo">
+        </label>
+        <label>
+          Año
+          <input type="text" name="anhoVehiculo" [(ngModel)]="contratoForm.anho_vehiculo">
+        </label>
+        <label>
+          Chapa
+          <input type="text" name="chapaVehiculo" [(ngModel)]="contratoForm.chapa">
+        </label>
+        <label>
+          Chasis
+          <input type="text" name="chasisVehiculo" [(ngModel)]="contratoForm.chasis">
+        </label>
+        <label>
+          Motor
+          <input type="text" name="motorVehiculo" [(ngModel)]="contratoForm.motor">
+        </label>
+        <label class="wide-field">
+          Estado de transferencia
+          <input type="text" name="estadoTransferencia" [(ngModel)]="contratoForm.estado_transferencia" placeholder="Contrato firmado, en transferencia, transferido">
+        </label>
+      </ng-container>
+
+      <ng-container *ngIf="esPermisoOCertificado()">
+        <div class="form-section-title wide-field">
+          <strong>Datos del permiso o certificado</strong>
+          <span>Entidad emisora y numero del documento.</span>
+        </div>
+        <label>
+          Entidad emisora
+          <input type="text" name="entidadEmisora" [(ngModel)]="contratoForm.entidad_emisora">
+        </label>
+        <label>
+          Numero de documento
+          <input type="text" name="numeroDocumento" [(ngModel)]="contratoForm.numero_documento">
+        </label>
+      </ng-container>
+
+      <div class="form-actions" *ngIf="esFormularioGeneral()">
         <button type="button" class="secondary" *ngIf="contratoForm.id" (click)="cancelarEdicion()">Cancelar</button>
         <button type="submit" [disabled]="loading()">{{ contratoForm.id ? 'Actualizar' : 'Guardar' }} contrato</button>
       </div>
     </form>
   </section>
 
-  <section class="panel">
+  <section class="panel" *ngIf="seccionActiva !== 'nuevo'">
     <div class="filters-row">
       <label>
         Buscar
@@ -65,32 +312,61 @@
       <button type="button" (click)="cargarContratos()" [disabled]="loading()">Filtrar</button>
     </div>
 
+    <div class="section-title">
+      <strong>{{ seccionActivaLabel() }}</strong>
+      <span>{{ itemsFiltrados().length }} registros en esta seccion</span>
+    </div>
+
+    <div class="columns-toolbar">
+      <button type="button" class="secondary" (click)="abrirColumnasPopup()">Columnas</button>
+    </div>
+
     <div class="table-wrap">
       <table class="contracts-table">
         <thead>
           <tr>
-            <th>Inicio</th>
-            <th>Fin</th>
-            <th>Duracion</th>
-            <th>Vencimiento</th>
-            <th>Ofrece</th>
-            <th>Contrata</th>
-            <th>Monto</th>
-            <th>Contexto</th>
-            <th>Clausulas</th>
+            <th *ngIf="mostrarColumna('inicio')">Inicio</th>
+            <th *ngIf="mostrarColumna('fin')">Fin</th>
+            <th *ngIf="mostrarColumna('documento')">Documento</th>
+            <th *ngIf="mostrarColumna('vencimiento')">Vencimiento</th>
+            <th *ngIf="mostrarColumna('tipo')">Tipo</th>
+            <th *ngIf="mostrarColumna('categoria')">Categoria</th>
+            <th *ngIf="mostrarColumna('naturaleza')">Naturaleza</th>
+            <th *ngIf="mostrarColumna('entidad')">{{ seccionActiva === 'terrenos' ? 'Comprador' : 'Entidad' }}</th>
+            <th *ngIf="mostrarColumna('contraparte')">{{ seccionActiva === 'terrenos' ? 'Vendedor' : 'Contraparte' }}</th>
+            <th *ngIf="mostrarColumna('sucursal')">Sucursal</th>
+            <th *ngIf="mostrarColumna('ciudad')">Ciudad</th>
+            <th *ngIf="mostrarColumna('catastro')">Catastro</th>
+            <th *ngIf="mostrarColumna('finca')">Finca</th>
+            <th *ngIf="mostrarColumna('bibliorato')">Bibliorato</th>
+            <th *ngIf="mostrarColumna('medio')">Radio / medio</th>
+            <th *ngIf="mostrarColumna('programa')">Programa</th>
+            <th *ngIf="mostrarColumna('contexto')">Contexto</th>
+            <th *ngIf="mostrarColumna('clausulas')">{{ seccionActiva === 'publicidad' ? 'Info crucial' : 'Clausulas' }}</th>
             <th>Accion</th>
           </tr>
         </thead>
         <tbody>
-          <tr *ngFor="let item of data()?.items ?? []">
-            <td>{{ item.inicio_contrato }}</td>
-            <td>{{ fechaFinContrato(item) || '-' }}</td>
-            <td>{{ item.duracion_meses ? item.duracion_meses + ' meses' : '-' }}</td>
-            <td><span class="expiry-badge" [ngClass]="vencimientoClass(item)">{{ vencimientoLabel(item) }}</span></td>
-            <td>{{ item.ofrece_contrato }}</td>
-            <td>{{ item.contratante }}</td>
-            <td>{{ formatMoney(item.monto_contrato) }}</td>
-            <td class="text-cell">
+          <tr *ngFor="let item of itemsFiltrados()">
+            <td *ngIf="mostrarColumna('inicio')">{{ item.inicio_contrato }}</td>
+            <td *ngIf="mostrarColumna('fin')">{{ fechaFinContrato(item) || '-' }}</td>
+            <td *ngIf="mostrarColumna('documento')">{{ item.nombre_documento || '-' }}</td>
+            <td *ngIf="mostrarColumna('vencimiento')"><span class="expiry-badge" [ngClass]="vencimientoClass(item)">{{ vencimientoLabel(item) }}</span></td>
+            <td *ngIf="mostrarColumna('tipo')">{{ tipoDocumentoLabel(item.tipo_documento) }}</td>
+            <td *ngIf="mostrarColumna('categoria')">{{ categoriaLabel(item.categoria) }}</td>
+            <td *ngIf="mostrarColumna('naturaleza')">{{ item.naturaleza || naturalezaCalculada(item) }}</td>
+            <td *ngIf="mostrarColumna('entidad')">{{ item.ofrece_contrato }}</td>
+            <td *ngIf="mostrarColumna('contraparte')">{{ item.contratante }}</td>
+            <td *ngIf="mostrarColumna('sucursal')">{{ item.sucursal || '-' }}</td>
+            <td *ngIf="mostrarColumna('ciudad')">
+              <span class="city-pill" [ngClass]="ciudadClass(item.localidad)">{{ item.localidad || '-' }}</span>
+            </td>
+            <td *ngIf="mostrarColumna('catastro')">{{ item.cuenta_catastral || '-' }}</td>
+            <td *ngIf="mostrarColumna('finca')">{{ item.finca_matricula || '-' }}</td>
+            <td *ngIf="mostrarColumna('bibliorato')">{{ item.bibliorato || '-' }}</td>
+            <td *ngIf="mostrarColumna('medio')">{{ item.medio_publicidad || '-' }}</td>
+            <td *ngIf="mostrarColumna('programa')">{{ item.programa_publicidad || '-' }}</td>
+            <td class="text-cell" *ngIf="mostrarColumna('contexto')">
               <div class="clauses-inline">
                 <span class="compact-text" [title]="item.contexto || ''">{{ resumenTexto(item.contexto, 42) }}</span>
                 <button
@@ -104,7 +380,7 @@
                 </button>
               </div>
             </td>
-            <td class="description-cell clauses-cell">
+            <td class="description-cell clauses-cell" *ngIf="mostrarColumna('clausulas')">
               <div class="clauses-inline">
                 <span class="clause-preview" [title]="item.clausulas_importantes || ''">{{ resumenTexto(item.clausulas_importantes, 42) }}</span>
                 <button
@@ -125,8 +401,8 @@
               </div>
             </td>
           </tr>
-          <tr *ngIf="!loading() && !(data()?.items?.length)">
-            <td colspan="10" class="empty-cell">No hay contratos registrados.</td>
+          <tr *ngIf="!loading() && !itemsFiltrados().length">
+            <td [attr.colspan]="columnasColspan()" class="empty-cell">No hay contratos registrados.</td>
           </tr>
         </tbody>
       </table>
@@ -143,6 +419,29 @@
         <button type="button" class="secondary" (click)="cerrarClausulas()">Cerrar</button>
       </div>
       <p class="modal-text">{{ contrato.clausulas_importantes }}</p>
+    </section>
+  </div>
+
+  <div class="modal-backdrop" *ngIf="columnasPopup()" (click)="cerrarColumnasPopup()">
+    <section class="modal-panel columns-modal" (click)="$event.stopPropagation()">
+      <div class="modal-title">
+        <div>
+          <h2>Columnas visibles</h2>
+          <span>Elegi que columnas mostrar en las tablas de contratos.</span>
+        </div>
+        <button type="button" class="secondary" (click)="cerrarColumnasPopup()">Cerrar</button>
+      </div>
+      <div class="columns-panel" aria-label="Columnas visibles">
+        <label *ngFor="let columna of columnasTabla" [class.unavailable]="!columnaDisponible(columna.key)">
+          <input
+            type="checkbox"
+            [checked]="columnasVisibles.has(columna.key)"
+            [disabled]="!columnaDisponible(columna.key)"
+            (change)="toggleColumna(columna.key, $any($event.target).checked)"
+          >
+          {{ columna.label }}
+        </label>
+      </div>
     </section>
   </div>
 

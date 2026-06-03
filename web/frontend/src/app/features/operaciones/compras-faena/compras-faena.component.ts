@@ -21,6 +21,7 @@ export class ComprasFaenaComponent implements OnInit {
   compraLoteManualOverride = false;
   compraDesde = '';
   compraHasta = '';
+  compraMaxFilas = signal(20);
   compraEditModalOpen = false;
   faenaModalOpen = false;
   compraLote = '';
@@ -46,16 +47,10 @@ export class ComprasFaenaComponent implements OnInit {
   comprasFaena = signal<ComprasFaenaData | null>(null);
 
   compraLotesFiltrados = computed(() => {
-    const term = this.compraBusqueda.trim().toLowerCase();
-    const desde = this.compraDesde || '';
-    const hasta = this.compraHasta || '';
-    const lotes = this.comprasFaena()?.lotes ?? [];
-    return lotes.filter((lote) =>
-      (!desde || lote.fecha >= desde)
-      && (!hasta || lote.fecha <= hasta)
-      && (!term || [lote.id, lote.lote, lote.empresa, lote.fecha].some((value) => String(value ?? '').toLowerCase().includes(term))),
-    );
+    return this.filtrarCompraLotes(true);
   });
+
+  compraTotalFiltrado = computed(() => this.filtrarCompraLotes(false).length);
 
   compraLoteSeleccionado = computed(() => {
     const loteId = this.compraLoteId;
@@ -65,6 +60,27 @@ export class ComprasFaenaComponent implements OnInit {
   ngOnInit(): void {
     this.setComprasFaenaRangoDefault();
     this.cargarComprasFaena();
+  }
+
+  cargarDiezMasCompras(): void {
+    this.compraMaxFilas.update((value) => (Number(value) || 20) + 10);
+  }
+
+  cargarTodasCompras(): void {
+    this.compraMaxFilas.set(this.compraTotalFiltrado());
+  }
+
+  private filtrarCompraLotes(aplicarLimite: boolean): CompraFaenaLote[] {
+    const term = this.compraBusqueda.trim().toLowerCase();
+    const desde = this.compraDesde || '';
+    const hasta = this.compraHasta || '';
+    const lotes = this.comprasFaena()?.lotes ?? [];
+    const rows = lotes.filter((lote) =>
+      (!desde || lote.fecha >= desde)
+      && (!hasta || lote.fecha <= hasta)
+      && (!term || [lote.id, lote.lote, lote.empresa, lote.fecha].some((value) => String(value ?? '').toLowerCase().includes(term))),
+    );
+    return aplicarLimite ? rows.slice(0, Number(this.compraMaxFilas()) || 20) : rows;
   }
 
   private toIsoDate(value: Date): string {
@@ -240,6 +256,34 @@ export class ComprasFaenaComponent implements OnInit {
       },
       error: (err) => {
         this.error.set(err?.error?.error ?? 'No se pudo actualizar el lote.');
+        this.compraLoading.set(false);
+      },
+    });
+  }
+
+  eliminarCompraLote(): void {
+    const lote = this.compraLoteSeleccionado();
+    if (!lote) {
+      this.error.set('Elegi un lote de la tabla.');
+      return;
+    }
+    if ((Number(lote.faenado) || 0) > 0) {
+      this.error.set('No se puede eliminar un lote que ya fue faenado.');
+      return;
+    }
+    const ok = window.confirm(`Eliminar el lote ${lote.lote}? Se borrara la compra y todo registro asociado si aun no fue faenado.`);
+    if (!ok) {
+      return;
+    }
+    this.compraLoading.set(true);
+    this.error.set('');
+    this.comprasFaenaService.deleteCompraLote({ id: lote.id }).subscribe({
+      next: () => {
+        this.compraLoteId = null;
+        this.cargarComprasFaena(null);
+      },
+      error: (err) => {
+        this.error.set(err?.error?.error ?? 'No se pudo eliminar el lote.');
         this.compraLoading.set(false);
       },
     });

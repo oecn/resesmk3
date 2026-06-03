@@ -44,6 +44,31 @@ export interface AcuerdoUbicacion {
   valor_gs?: number | string | null;
   detalle?: string | null;
   orden?: number;
+  tentativa?: boolean;
+}
+
+export interface MapaUbicacion {
+  id: number;
+  sucursal: 'luque' | 'aregua' | 'itaugua';
+  codigo: string;
+  ubicacion?: string | null;
+  bloque: string;
+  numero: number;
+  tipo_espacio: 'puntera' | 'pestana' | 'tramo_gondola' | 'isla' | 'espacio_gondola_frio';
+  valor_gs?: number | string | null;
+  detalle?: string | null;
+  acuerdo_id?: number | null;
+  vigencia_hasta?: string | null;
+  estado_renovacion?: string | null;
+  proveedor_nombre?: string | null;
+}
+
+export interface MapaUbicacionesResponse {
+  items: MapaUbicacion[];
+}
+
+export interface MapaUbicacionValorResponse extends MapaUbicacion {
+  acuerdos_actualizados: number;
 }
 
 export interface AcuerdosComercialesResponse {
@@ -85,6 +110,8 @@ export interface AcuerdoCobranza {
   activo: boolean;
   periodo_anho: number;
   periodo_mes: number;
+  tipo_facturacion: 'alquiler' | 'porcentaje_venta' | 'ambos';
+  cobertura_tipos?: number;
   numero_factura: string;
   monto_factura: number;
   fecha_factura?: string | null;
@@ -134,6 +161,58 @@ export interface AcuerdosCobranzasAnualResponse {
   }>;
 }
 
+export interface AcuerdosEstadisticasResponse {
+  periodo: { mes: number; anho: number };
+  resumen: {
+    acuerdos_activos: number;
+    negociaciones: number;
+    vencen_30: number;
+    vencen_60: number;
+    vencen_90: number;
+    vencidos: number;
+    ingreso_mensual_contratado: number;
+    ingreso_anualizado: number;
+    valor_riesgo_90: number;
+    total_facturado: number;
+    total_cobrado: number;
+    total_pendiente: number;
+    facturas_cargadas: number;
+    facturas_cobradas: number;
+    acuerdos_sin_facturacion: number;
+    porcentaje_cobranza_monto: number;
+    concentracion_top5: number;
+  };
+  top_proveedores: Array<{
+    proveedor_id: number;
+    proveedor_nombre: string;
+    valor_mensual: number;
+    ubicaciones: number;
+  }>;
+  mix_espacios: Array<{
+    sucursal: string;
+    tipo_espacio: string;
+    valor_mensual: number;
+    ubicaciones: number;
+  }>;
+  ocupacion: Array<{
+    sucursal: string;
+    tipo_espacio: string;
+    bloque?: string | null;
+    total: number;
+    ocupadas: number;
+    libres: number;
+    potencial_libre: number;
+  }>;
+  vencimientos: Array<{
+    id: number;
+    titulo: string;
+    proveedor_nombre: string;
+    vigencia_hasta?: string | null;
+    valor_mensual: number;
+    dias: number;
+  }>;
+}
+
 export interface ProveedoresComercialesResponse {
   items: ProveedorComercial[];
 }
@@ -172,6 +251,7 @@ export interface AcuerdoCobranzaPayload {
   acuerdo_id: number;
   periodo_mes: number;
   periodo_anho: number;
+  tipo_facturacion: 'alquiler' | 'porcentaje_venta' | 'ambos';
   numero_factura: string;
   monto_factura?: number | string | null;
   fecha_factura?: string | null;

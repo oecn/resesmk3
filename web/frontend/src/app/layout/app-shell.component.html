@@ -7,6 +7,7 @@
     [userDisplayName]="userDisplayName()"
     [userRoleLabel]="userRoleLabel()"
     [canViewDashboard]="canViewDashboard()"
+    [canViewEstadisticas]="canViewEstadisticas()"
     [canManageComprasFaena]="canManageComprasFaena()"
     [canViewResumenes]="canViewResumenes()"
     [canManageDistribuciones]="canManageDistribuciones()"
@@ -25,5 +26,11 @@
 
   <app-shell-topbar [vista]="vista"></app-shell-topbar>
 
-  <router-outlet *ngIf="vista === 'dashboard' || vista === 'resumenes' || vista === 'compras-faena' || vista === 'recepcion' || vista === 'distribuciones' || vista === 'usuarios' || vista === 'flota' || vista === 'acuerdos-comerciales' || vista === 'contratos' || vista === 'archivos-directorio'"></router-outlet>
+  <section class="backend-status" [class.offline]="!backendConnected()">
+    <span class="backend-dot"></span>
+    <strong>{{ backendConnected() ? 'API conectada' : 'API sin conexion' }}</strong>
+    <span *ngIf="backendLastUpdate()">Ultima actualizacion: {{ backendLastUpdate() }}</span>
+  </section>
+
+  <router-outlet *ngIf="vista === 'dashboard' || vista === 'estadisticas' || vista === 'resumenes' || vista === 'compras-faena' || vista === 'recepcion' || vista === 'distribuciones' || vista === 'usuarios' || vista === 'flota' || vista === 'acuerdos-comerciales' || vista === 'contratos' || vista === 'archivos-directorio'"></router-outlet>
 </main>

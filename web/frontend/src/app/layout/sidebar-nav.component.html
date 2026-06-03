@@ -45,6 +45,10 @@
       </span>
       <span class="view-text">Dashboard</span>
     </button>
+    <button *ngIf="canViewEstadisticas" type="button" title="Estadisticas" [class.active]="vista === 'estadisticas'" (click)="selectView.emit('estadisticas')">
+      <span class="view-icon text-icon" aria-hidden="true">ST</span>
+      <span class="view-text">Estadisticas</span>
+    </button>
     <button *ngIf="canManageComprasFaena" type="button" title="Compras y faena" [class.active]="vista === 'compras-faena'" (click)="selectView.emit('compras-faena')">
       <span class="view-icon text-icon" aria-hidden="true">Gs.</span>
       <span class="view-text">Compras y faena</span>

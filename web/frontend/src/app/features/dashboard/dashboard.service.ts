@@ -10,4 +10,8 @@ export class DashboardFeatureService {
   getDashboard(desde?: string, hasta?: string): Observable<DashboardData> {
     return this.api.get<DashboardData>('/dashboard', { desde, hasta });
   }
+
+  getMenudenciasPdf(desde?: string, hasta?: string): Observable<Blob> {
+    return this.api.getBlob('/dashboard/menudencias/pdf', { desde, hasta });
+  }
 }

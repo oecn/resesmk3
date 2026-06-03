@@ -23,9 +23,22 @@ export interface ResumenSucursalSeleccionada {
   dif_kg: number;
 }
 
+export interface DistribucionResumenDetalle {
+  id: number;
+  lote_id: number;
+  lote: string;
+  fecha: string;
+  local: string;
+  kg: number;
+  cabezas: number;
+  diferencia_kg: number;
+  nota: string;
+}
+
 export interface ResumenesData {
   empresas: string[];
   lotes: LoteResumen[];
   selected_lote_ids: number[];
   resumenSucursales: ResumenSucursalSeleccionada[];
+  distribucionesDetalle: DistribucionResumenDetalle[];
 }

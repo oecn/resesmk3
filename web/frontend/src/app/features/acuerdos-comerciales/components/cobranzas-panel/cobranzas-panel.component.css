@@ -43,21 +43,34 @@
 
 .cobranzas-list {
   display: grid;
-  gap: 14px;
+  gap: 9px;
 }
 
 .cobranza-item {
   border: 1px solid #b8c6d8;
+  border-left: 6px solid #dc2626;
   border-radius: 8px;
-  padding: 14px;
+  padding: 10px 12px;
   display: grid;
-  gap: 12px;
+  gap: 8px;
   background: #ffffff;
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
 }
 
+.cobranza-item.partial {
+  border-left-color: #f59e0b;
+}
+
+.cobranza-item.paid {
+  border-left-color: #16a34a;
+}
+
 .cobranza-heading {
   justify-content: space-between;
+}
+
+.cobranza-heading-compact {
+  align-items: center;
 }
 
 .cobranza-heading strong {
@@ -79,6 +92,14 @@
   flex-wrap: wrap;
 }
 
+.cobranza-status-summary {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
 .invoice-summary {
   color: #1e293b !important;
   font-weight: 600;
@@ -86,24 +107,93 @@
 
 .status-pill {
   border-radius: 999px;
-  background: #f59e0b;
-  color: #111827 !important;
+  background: #fee2e2;
+  color: #991b1b !important;
   font-size: 0.8rem;
   font-weight: 800;
   padding: 5px 11px;
-  border: 1px solid #d97706;
+  border: 1px solid #fca5a5;
+}
+
+.status-pill.unpaid {
+  background: #fee2e2;
+  border-color: #fca5a5;
+  color: #991b1b !important;
 }
 
 .status-pill.paid {
+  background: #dcfce7;
+  color: #166534 !important;
+  border-color: #86efac;
+}
+
+.status-pill.partial {
+  background: #fef3c7;
+  border-color: #fbbf24;
+  color: #92400e !important;
+}
+
+.toggle-group-button {
+  background: #f8fafc !important;
+  border-color: #cbd5e1 !important;
+  color: #334155 !important;
+}
+
+.concept-list {
+  display: grid;
+  gap: 8px;
+}
+
+.concept-row {
+  align-items: center;
+  background: #f8fafc;
+  border: 1px solid #dbe4ef;
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(120px, 0.7fr) minmax(120px, 1fr) minmax(90px, 0.6fr) auto auto;
+  padding: 7px 9px;
+}
+
+.concept-row strong {
+  color: #0f172a;
+}
+
+.concept-row span {
+  color: #475569;
+}
+
+.concept-row em {
+  background: #f59e0b;
+  border-radius: 999px;
+  color: #111827;
+  font-style: normal;
+  font-weight: 800;
+  padding: 4px 9px;
+}
+
+.concept-row em.paid {
   background: #16a34a;
-  color: #ffffff !important;
-  border-color: #15803d;
+  color: #fff;
+}
+
+.concept-actions {
+  display: flex;
+  justify-content: flex-end;
 }
 
 .cobranza-summary-actions .mini-button {
   background: #0f766e;
   border-color: #0f766e;
   color: #ffffff;
+  font-weight: 800;
+}
+
+.concept-row .mini-button,
+.concept-actions .mini-button {
+  background: #0f766e;
+  border-color: #0f766e;
+  color: #fff;
   font-weight: 800;
 }
 

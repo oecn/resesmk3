@@ -1,8 +1,9 @@
 import { CommonModule } from '@angular/common';
-import { Component, OnInit, computed, effect, inject } from '@angular/core';
+import { Component, OnDestroy, OnInit, computed, effect, inject, signal } from '@angular/core';
 import { NavigationEnd, Router, RouterOutlet } from '@angular/router';
 import { AppModuleKey } from '../core/auth/auth.models';
 import { AuthService } from '../core/auth/auth.service';
+import { ApiService } from '../core/http/api.service';
 import { PermissionsService } from '../core/auth/permissions.service';
 import {
   APP_NAV_ITEMS,
@@ -21,16 +22,20 @@ import { SidebarNavComponent } from './sidebar-nav.component';
   templateUrl: './app-shell.component.html',
   styleUrl: './app-shell.component.css',
 })
-export class AppShellComponent implements OnInit {
+export class AppShellComponent implements OnInit, OnDestroy {
   private readonly authService = inject(AuthService);
+  private readonly api = inject(ApiService);
   private readonly permissions = inject(PermissionsService);
   private readonly preferences = inject(PreferencesService);
   private loadedUserKey = '';
+  private backendTimer: number | null = null;
 
   vista: AppModuleKey = DEFAULT_APP_MODULE;
   viewMenuOpen = false;
   darkMode = false;
   currentUser = this.authService.currentUser;
+  backendConnected = signal(false);
+  backendLastUpdate = signal('');
 
   userDisplayName = computed(() => this.currentUser()?.nombre || 'Sin sesion');
   userRoleLabel = computed(() => this.permissions.roleLabel(this.currentUser()));
@@ -65,6 +70,14 @@ export class AppShellComponent implements OnInit {
         }
       }
     });
+    this.checkBackendStatus();
+    this.backendTimer = window.setInterval(() => this.checkBackendStatus(), 60000);
+  }
+
+  ngOnDestroy(): void {
+    if (this.backendTimer !== null) {
+      window.clearInterval(this.backendTimer);
+    }
   }
 
   logout(): void {
@@ -106,6 +119,10 @@ export class AppShellComponent implements OnInit {
 
   canViewDashboard(): boolean {
     return this.canAccess('dashboard');
+  }
+
+  canViewEstadisticas(): boolean {
+    return this.canAccess('estadisticas');
   }
 
   canManageComprasFaena(): boolean {
@@ -181,5 +198,17 @@ export class AppShellComponent implements OnInit {
 
   private normalizeRoute(url: string): string {
     return `/${String(url || '').split('?')[0].split('#')[0].replace(/^\/+/, '')}`;
+  }
+
+  private checkBackendStatus(): void {
+    this.api.get<{ ok: boolean }>('/health').subscribe({
+      next: () => {
+        this.backendConnected.set(true);
+        this.backendLastUpdate.set(new Date().toLocaleTimeString('es-PY', { hour: '2-digit', minute: '2-digit' }));
+      },
+      error: () => {
+        this.backendConnected.set(false);
+      },
+    });
   }
 }

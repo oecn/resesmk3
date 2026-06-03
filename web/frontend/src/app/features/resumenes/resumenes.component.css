@@ -1,1 +1,30 @@
+.distribuciones-detalle-modal {
+  width: min(1120px, 96vw);
+}
 
+.distribuciones-detalle-modal .panel-title {
+  margin-bottom: 14px;
+}
+
+.distribuciones-detalle-modal .panel-title p {
+  margin: 4px 0 0;
+}
+
+.selected-summary-line .mini-button {
+  margin-left: auto;
+}
+
+.load-more-row {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
+.load-more-row span {
+  color: #536270;
+  font-weight: 800;
+  margin-right: auto;
+}

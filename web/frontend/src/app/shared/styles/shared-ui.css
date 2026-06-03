@@ -255,6 +255,7 @@ router-outlet {
   flex-direction: column;
   width: min(300px, calc(100vw - 28px));
   height: 100vh;
+  overflow: hidden;
   padding: 84px 18px 24px;
   border-right: 1px solid #d9e2ea;
   background: linear-gradient(180deg, #f9fbfc 0%, #eef8f9 100%);
@@ -332,6 +333,24 @@ router-outlet {
 .view-stack {
   display: grid;
   gap: 10px;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 4px;
+  scrollbar-color: #9db7bf transparent;
+  scrollbar-width: thin;
+}
+
+.view-stack::-webkit-scrollbar {
+  width: 8px;
+}
+
+.view-stack::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: #9db7bf;
+}
+
+.view-stack::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .view-sidebar-footer {
@@ -1000,8 +1019,8 @@ button:disabled {
 }
 
 .distribution-history-wrap {
-  min-height: 300px;
-  max-height: 440px;
+  min-height: 175px;
+  max-height: 320px;
 }
 
 .distribution-row-actions {
@@ -1031,6 +1050,17 @@ button:disabled {
 
 .distribution-history {
   min-width: 0;
+  height: 100%;
+}
+
+.distribution-history fieldset {
+  min-height: 285px;
+  display: flex;
+  flex-direction: column;
+}
+
+.distribution-history .distribution-history-wrap {
+  flex: 1;
 }
 
 .local-summary-grid,
@@ -1768,6 +1798,27 @@ tr.selected td {
   background: #e5f5f3;
 }
 
+tr.zero-kg-row td {
+  background: #fee2e2;
+  border-bottom-color: #fca5a5;
+  color: #7f1d1d;
+}
+
+tr.zero-kg-row td:first-child {
+  border-left: 3px solid #dc2626;
+}
+
+tr.zero-kg-row:hover td,
+tr.zero-kg-row.selected td {
+  background: #fecaca;
+  outline: 2px solid #dc2626;
+  outline-offset: -2px;
+}
+
+tr.zero-kg-row .note-preview {
+  color: #991b1b;
+}
+
 .status-red td {
   background: #ffd6cf;
 }
@@ -1836,6 +1887,17 @@ tr.status-neutral.selected td {
   height: 7px;
   border-radius: 1px 4px 4px 1px;
   background: #c2412d;
+}
+
+.local-distribution-row.zero-kg-row {
+  border-color: #fca5a5;
+  background: #fee2e2;
+  box-shadow: inset 3px 0 0 #dc2626;
+  color: #7f1d1d;
+}
+
+.local-distribution-row.zero-kg-row .note-preview {
+  color: #991b1b;
 }
 
 .recepcion-table td input {
