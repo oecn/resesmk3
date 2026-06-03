@@ -24,13 +24,47 @@ def run_migration(db_url: str) -> None:
             cur.execute(
                 """
                 ALTER TABLE acuerdos_comerciales
-                ADD COLUMN IF NOT EXISTS acuerdo_origen_id INTEGER NULL REFERENCES acuerdos_comerciales(id)
+                ADD COLUMN IF NOT EXISTS acuerdo_origen_id INTEGER NULL
                 """
             )
             cur.execute(
                 """
                 ALTER TABLE acuerdos_comerciales
-                ADD COLUMN IF NOT EXISTS renovado_por_acuerdo_id INTEGER NULL REFERENCES acuerdos_comerciales(id)
+                ADD COLUMN IF NOT EXISTS renovado_por_acuerdo_id INTEGER NULL
+                """
+            )
+            cur.execute(
+                """
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1
+                        FROM pg_constraint
+                        WHERE conname = 'fk_acuerdos_comerciales_acuerdo_origen'
+                          AND conrelid = 'acuerdos_comerciales'::regclass
+                    ) THEN
+                        ALTER TABLE acuerdos_comerciales
+                        ADD CONSTRAINT fk_acuerdos_comerciales_acuerdo_origen
+                        FOREIGN KEY (acuerdo_origen_id) REFERENCES acuerdos_comerciales(id);
+                    END IF;
+                END $$;
+                """
+            )
+            cur.execute(
+                """
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1
+                        FROM pg_constraint
+                        WHERE conname = 'fk_acuerdos_comerciales_renovado_por'
+                          AND conrelid = 'acuerdos_comerciales'::regclass
+                    ) THEN
+                        ALTER TABLE acuerdos_comerciales
+                        ADD CONSTRAINT fk_acuerdos_comerciales_renovado_por
+                        FOREIGN KEY (renovado_por_acuerdo_id) REFERENCES acuerdos_comerciales(id);
+                    END IF;
+                END $$;
                 """
             )
             cur.execute(
