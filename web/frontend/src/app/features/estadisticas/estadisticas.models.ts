@@ -57,6 +57,12 @@ export interface AlertaGestion {
   detalle: string;
 }
 
+export interface ClasificacionCompra {
+  tipo: string;
+  cantidad: number;
+  participacion_pct: number;
+}
+
 export interface EstadisticasData {
   kpis: EstadisticasKpis;
   proveedores: EstadisticaProveedor[];
@@ -64,4 +70,5 @@ export interface EstadisticasData {
   mejoresLotes: EstadisticaLote[];
   alertas: EstadisticaLote[];
   alertasGestion: AlertaGestion[];
+  clasificacionCompras: ClasificacionCompra[];
 }

@@ -25,6 +25,8 @@ export class ResumenesComponent implements OnInit {
   error = signal('');
   resumenes = signal<ResumenesData | null>(null);
   distribucionesDetalleOpen = signal(false);
+  compraDetalleOpen = signal(false);
+  compraDetalleLote = signal<LoteResumen | null>(null);
 
   resumenLotesFiltrados = computed(() => this.filtrarResumenLotes(true));
 
@@ -189,6 +191,26 @@ export class ResumenesComponent implements OnInit {
 
   cerrarDistribucionesDetalle(): void {
     this.distribucionesDetalleOpen.set(false);
+  }
+
+  abrirCompraDetalle(lote: LoteResumen, event?: Event): void {
+    event?.stopPropagation();
+    this.compraDetalleLote.set(lote);
+    this.compraDetalleOpen.set(true);
+  }
+
+  cerrarCompraDetalle(): void {
+    this.compraDetalleOpen.set(false);
+    this.compraDetalleLote.set(null);
+  }
+
+  compraDetalleTipos(lote: LoteResumen): Array<{ tipo: string; cantidad: number; peso: number }> {
+    return [
+      { tipo: 'TOR', cantidad: Number(lote.cantidad_tor) || 0, peso: Number(lote.peso_promedio_tor) || 0 },
+      { tipo: 'NOV', cantidad: Number(lote.cantidad_nov) || 0, peso: Number(lote.peso_promedio_nov) || 0 },
+      { tipo: 'VAC', cantidad: Number(lote.cantidad_vac) || 0, peso: Number(lote.peso_promedio_vac) || 0 },
+      { tipo: 'VAQ', cantidad: Number(lote.cantidad_vaq) || 0, peso: Number(lote.peso_promedio_vaq) || 0 },
+    ].filter((row) => row.cantidad > 0 || row.peso > 0);
   }
 
   distribucionesDetalleLotesLabel(): string {

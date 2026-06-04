@@ -9,6 +9,14 @@ export interface CompraFaenaLote {
   distribuidas: number;
   monto: number;
   peso_compra_kg: number;
+  cantidad_vac: number;
+  cantidad_tor: number;
+  cantidad_nov: number;
+  cantidad_vaq: number;
+  peso_promedio_vac: number;
+  peso_promedio_tor: number;
+  peso_promedio_nov: number;
+  peso_promedio_vaq: number;
 }
 
 export interface CompraFaenaResumen {

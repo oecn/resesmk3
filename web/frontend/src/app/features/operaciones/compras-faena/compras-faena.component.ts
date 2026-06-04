@@ -6,6 +6,14 @@ import { ComprasFaenaService } from './compras-faena.service';
 import { FmtMoneyPipe } from '../../../shared/pipes/fmt-money.pipe';
 import { FmtNumberPipe } from '../../../shared/pipes/fmt-number.pipe';
 
+type AnimalClassCode = 'TOR' | 'NOV' | 'VAC' | 'VAQ';
+
+interface AnimalClassRow {
+  tipo: AnimalClassCode | '';
+  cantidad: string;
+  pesoPromedio: string;
+}
+
 @Component({
   selector: 'app-compras-faena',
   standalone: true,
@@ -15,6 +23,7 @@ import { FmtNumberPipe } from '../../../shared/pipes/fmt-number.pipe';
 })
 export class ComprasFaenaComponent implements OnInit {
   private readonly comprasFaenaService = inject(ComprasFaenaService);
+  readonly animalClassOptions: AnimalClassCode[] = ['TOR', 'NOV', 'VAC', 'VAQ'];
 
   compraBusqueda = '';
   compraLoteId: number | null = null;
@@ -28,12 +37,30 @@ export class ComprasFaenaComponent implements OnInit {
   compraEmpresa = 'Corral';
   compraFecha = new Date().toISOString().slice(0, 10);
   compraCantidad = '';
+  compraCantidadVac = '';
+  compraCantidadTor = '';
+  compraCantidadNov = '';
+  compraCantidadVaq = '';
+  compraPesoPromedioVac = '';
+  compraPesoPromedioTor = '';
+  compraPesoPromedioNov = '';
+  compraPesoPromedioVaq = '';
+  compraAnimalRows: AnimalClassRow[] = [{ tipo: '', cantidad: '', pesoPromedio: '' }];
   compraMonto = '';
   compraPesoKg = '';
   modalCompraLote = '';
   modalCompraEmpresa = 'Corral';
   modalCompraFecha = new Date().toISOString().slice(0, 10);
   modalCompraCantidad = '';
+  modalCompraCantidadVac = '';
+  modalCompraCantidadTor = '';
+  modalCompraCantidadNov = '';
+  modalCompraCantidadVaq = '';
+  modalCompraPesoPromedioVac = '';
+  modalCompraPesoPromedioTor = '';
+  modalCompraPesoPromedioNov = '';
+  modalCompraPesoPromedioVaq = '';
+  modalCompraAnimalRows: AnimalClassRow[] = [{ tipo: '', cantidad: '', pesoPromedio: '' }];
   modalCompraMonto = '';
   modalCompraPesoKg = '';
   faenaFecha = new Date().toISOString().slice(0, 10);
@@ -132,6 +159,15 @@ export class ComprasFaenaComponent implements OnInit {
     this.compraEmpresa = this.comprasFaena()?.empresas[0] ?? 'Corral';
     this.compraFecha = new Date().toISOString().slice(0, 10);
     this.compraCantidad = '';
+    this.compraCantidadVac = '';
+    this.compraCantidadTor = '';
+    this.compraCantidadNov = '';
+    this.compraCantidadVaq = '';
+    this.compraPesoPromedioVac = '';
+    this.compraPesoPromedioTor = '';
+    this.compraPesoPromedioNov = '';
+    this.compraPesoPromedioVaq = '';
+    this.compraAnimalRows = [{ tipo: '', cantidad: '', pesoPromedio: '' }];
     this.compraMonto = '';
     this.compraPesoKg = '';
   }
@@ -195,7 +231,116 @@ export class ComprasFaenaComponent implements OnInit {
     this.maybeAutofillCompraLote();
   }
 
+  animalClassAvailable(tipo: AnimalClassCode, rows: AnimalClassRow[], currentIndex: number): boolean {
+    return !rows.some((row, index) => index !== currentIndex && row.tipo === tipo);
+  }
+
+  addAnimalClassRow(rows: AnimalClassRow[]): void {
+    if (rows.length < this.animalClassOptions.length) {
+      rows.push({ tipo: '', cantidad: '', pesoPromedio: '' });
+    }
+  }
+
+  removeAnimalClassRow(rows: AnimalClassRow[], index: number): void {
+    rows.splice(index, 1);
+    if (!rows.length) {
+      rows.push({ tipo: '', cantidad: '', pesoPromedio: '' });
+    }
+  }
+
+  handleAnimalClassEnter(event: Event, rows: AnimalClassRow[]): void {
+    event.preventDefault();
+    this.addAnimalClassRow(rows);
+  }
+
+  private animalRowsToPayload(rows: AnimalClassRow[]) {
+    const data = {
+      cantidad_vac: '0',
+      cantidad_tor: '0',
+      cantidad_nov: '0',
+      cantidad_vaq: '0',
+      peso_promedio_vac: '0',
+      peso_promedio_tor: '0',
+      peso_promedio_nov: '0',
+      peso_promedio_vaq: '0',
+    };
+    for (const row of rows) {
+      if (!row.tipo) {
+        continue;
+      }
+      if (row.tipo === 'VAC') {
+        data.cantidad_vac = row.cantidad || '0';
+        data.peso_promedio_vac = row.pesoPromedio || '0';
+      } else if (row.tipo === 'TOR') {
+        data.cantidad_tor = row.cantidad || '0';
+        data.peso_promedio_tor = row.pesoPromedio || '0';
+      } else if (row.tipo === 'NOV') {
+        data.cantidad_nov = row.cantidad || '0';
+        data.peso_promedio_nov = row.pesoPromedio || '0';
+      } else if (row.tipo === 'VAQ') {
+        data.cantidad_vaq = row.cantidad || '0';
+        data.peso_promedio_vaq = row.pesoPromedio || '0';
+      }
+    }
+    return data;
+  }
+
+  private validateAnimalRows(rows: AnimalClassRow[], cantidadTotalTxt: string): string {
+    const cantidadTotal = Number(String(cantidadTotalTxt || '').replace(',', '.')) || 0;
+    const usados = new Set<string>();
+    let suma = 0;
+    let tieneTipo = false;
+
+    for (const row of rows) {
+      const cantidad = Number(String(row.cantidad || '').replace(',', '.')) || 0;
+      const peso = Number(String(row.pesoPromedio || '').replace(',', '.')) || 0;
+      const tieneDatos = Boolean(row.tipo) || cantidad > 0 || peso > 0;
+      if (!tieneDatos) {
+        continue;
+      }
+      if (!row.tipo) {
+        return 'Elegi el tipo de animal para cada fila cargada.';
+      }
+      if (usados.has(row.tipo)) {
+        return `El tipo ${row.tipo} esta repetido.`;
+      }
+      if (!Number.isInteger(cantidad) || cantidad <= 0) {
+        return `La cantidad de ${row.tipo} debe ser un entero mayor a 0.`;
+      }
+      if (peso < 0) {
+        return `El peso promedio de ${row.tipo} no puede ser negativo.`;
+      }
+      usados.add(row.tipo);
+      suma += cantidad;
+      tieneTipo = true;
+    }
+
+    if (!tieneTipo) {
+      return 'Carga al menos un tipo de animal.';
+    }
+    if (suma !== cantidadTotal) {
+      return `La suma de tipos (${suma}) debe ser igual a la cantidad comprada (${cantidadTotal}).`;
+    }
+    return '';
+  }
+
+  private animalRowsFromLote(lote: CompraFaenaLote): AnimalClassRow[] {
+    const rows: AnimalClassRow[] = [
+      { tipo: 'TOR' as AnimalClassCode, cantidad: String(lote.cantidad_tor ?? 0), pesoPromedio: String(lote.peso_promedio_tor ?? 0) },
+      { tipo: 'NOV' as AnimalClassCode, cantidad: String(lote.cantidad_nov ?? 0), pesoPromedio: String(lote.peso_promedio_nov ?? 0) },
+      { tipo: 'VAC' as AnimalClassCode, cantidad: String(lote.cantidad_vac ?? 0), pesoPromedio: String(lote.peso_promedio_vac ?? 0) },
+      { tipo: 'VAQ' as AnimalClassCode, cantidad: String(lote.cantidad_vaq ?? 0), pesoPromedio: String(lote.peso_promedio_vaq ?? 0) },
+    ].filter((row) => (Number(row.cantidad) || 0) > 0 || (Number(row.pesoPromedio) || 0) > 0);
+    return rows.length ? rows : [{ tipo: '', cantidad: '', pesoPromedio: '' }];
+  }
+
   guardarCompraLote(): void {
+    const validationError = this.validateAnimalRows(this.compraAnimalRows, this.compraCantidad);
+    if (validationError) {
+      this.error.set(validationError);
+      return;
+    }
+    const animalPayload = this.animalRowsToPayload(this.compraAnimalRows);
     this.compraLoading.set(true);
     this.error.set('');
     this.comprasFaenaService.saveCompraLote({
@@ -206,6 +351,7 @@ export class ComprasFaenaComponent implements OnInit {
       cantidad: this.compraCantidad,
       monto: this.compraMonto,
       peso_compra_kg: this.compraPesoKg,
+      ...animalPayload,
     }).subscribe({
       next: () => {
         this.limpiarCompraForm();
@@ -228,6 +374,15 @@ export class ComprasFaenaComponent implements OnInit {
     this.modalCompraEmpresa = lote.empresa;
     this.modalCompraFecha = lote.fecha;
     this.modalCompraCantidad = String(lote.cantidad);
+    this.modalCompraCantidadVac = String(lote.cantidad_vac ?? 0);
+    this.modalCompraCantidadTor = String(lote.cantidad_tor ?? 0);
+    this.modalCompraCantidadNov = String(lote.cantidad_nov ?? 0);
+    this.modalCompraCantidadVaq = String(lote.cantidad_vaq ?? 0);
+    this.modalCompraPesoPromedioVac = String(lote.peso_promedio_vac ?? 0);
+    this.modalCompraPesoPromedioTor = String(lote.peso_promedio_tor ?? 0);
+    this.modalCompraPesoPromedioNov = String(lote.peso_promedio_nov ?? 0);
+    this.modalCompraPesoPromedioVaq = String(lote.peso_promedio_vaq ?? 0);
+    this.modalCompraAnimalRows = this.animalRowsFromLote(lote);
     this.modalCompraMonto = String(lote.monto ?? 0);
     this.modalCompraPesoKg = String(lote.peso_compra_kg ?? 0);
     this.compraEditModalOpen = true;
@@ -239,6 +394,12 @@ export class ComprasFaenaComponent implements OnInit {
       this.error.set('Elegi un lote de la tabla.');
       return;
     }
+    const validationError = this.validateAnimalRows(this.modalCompraAnimalRows, this.modalCompraCantidad);
+    if (validationError) {
+      this.error.set(validationError);
+      return;
+    }
+    const animalPayload = this.animalRowsToPayload(this.modalCompraAnimalRows);
     this.compraLoading.set(true);
     this.error.set('');
     this.comprasFaenaService.saveCompraLote({
@@ -249,6 +410,7 @@ export class ComprasFaenaComponent implements OnInit {
       cantidad: this.modalCompraCantidad,
       monto: this.modalCompraMonto,
       peso_compra_kg: this.modalCompraPesoKg,
+      ...animalPayload,
     }).subscribe({
       next: () => {
         this.compraEditModalOpen = false;

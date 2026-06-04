@@ -132,6 +132,7 @@
                 <th>R%</th>
                 <th>KgC.</th>
                 <th>Rnd.</th>
+                <th>Detalle</th>
                 <th>Cerr.</th>
               </tr>
             </thead>
@@ -159,6 +160,9 @@
                 <td>{{ (lote.pct_restante | fmtNumber:0) }}</td>
                 <td>{{ (lote.kgcompra | fmtNumber:2) }}</td>
                 <td>{{ (lote.rend_pct | fmtNumber:0) }}</td>
+                <td>
+                  <button type="button" class="secondary mini-button" (click)="abrirCompraDetalle(lote, $event)">Compra</button>
+                </td>
                 <td class="resumen-cierre-cell">
                   <label class="resumen-lock-toggle" [class.is-closed]="lote.cerrado" (click)="$event.stopPropagation()">
                     <input type="checkbox" [checked]="lote.cerrado" (change)="toggleResumenCerrado(lote, $event)">
@@ -216,6 +220,63 @@
                 </tr>
                 <tr *ngIf="!resumen.distribucionesDetalle.length">
                   <td colspan="8" class="empty-cell">No hay distribuciones para los lotes seleccionados.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+
+      <div class="modal-backdrop" *ngIf="compraDetalleOpen() && compraDetalleLote() as lote" (click)="cerrarCompraDetalle()">
+        <section class="modal-card compra-detalle-modal" role="dialog" aria-modal="true" aria-label="Detalle de compra" (click)="$event.stopPropagation()">
+          <div class="panel-title">
+            <div>
+              <h2>Detalle de compra</h2>
+              <p class="muted">{{ lote.lote }} | {{ lote.empresa }} | {{ lote.fecha }}</p>
+            </div>
+            <button type="button" class="secondary mini-button" (click)="cerrarCompraDetalle()">Cerrar</button>
+          </div>
+
+          <div class="local-summary-grid">
+            <div class="local-summary-card">
+              <span>Compra</span>
+              <strong>{{ lote.cantcompra | fmtNumber }}</strong>
+              <small>Reces compradas</small>
+            </div>
+            <div class="local-summary-card">
+              <span>Peso compra</span>
+              <strong>{{ lote.kgcompra | fmtNumber:2 }}</strong>
+              <small>Kg</small>
+            </div>
+            <div class="local-summary-card">
+              <span>Monto</span>
+              <strong>{{ lote.monto | fmtMoney }}</strong>
+              <small>Gs</small>
+            </div>
+            <div class="local-summary-card">
+              <span>Costo compra/kg</span>
+              <strong>{{ lote.kgcompra > 0 ? ((lote.monto / lote.kgcompra) | fmtMoney) : '-' }}</strong>
+              <small>Segun peso compra</small>
+            </div>
+          </div>
+
+          <div class="table-wrap">
+            <table class="compact-table">
+              <thead>
+                <tr>
+                  <th>Tipo</th>
+                  <th>Cantidad</th>
+                  <th>Peso prom. kg</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr *ngFor="let row of compraDetalleTipos(lote)">
+                  <td>{{ row.tipo }}</td>
+                  <td>{{ row.cantidad | fmtNumber }}</td>
+                  <td>{{ row.peso | fmtNumber:2 }}</td>
+                </tr>
+                <tr *ngIf="!compraDetalleTipos(lote).length">
+                  <td colspan="3" class="empty-cell">Sin clasificacion cargada para este lote.</td>
                 </tr>
               </tbody>
             </table>

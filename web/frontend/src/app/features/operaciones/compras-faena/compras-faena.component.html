@@ -70,6 +70,18 @@
                 Monto Gs
                 <input type="number" min="0" step="1" name="compraMonto" [(ngModel)]="compraMonto">
               </label>
+              <div class="animal-type-grid">
+                <div class="animal-type-row" *ngFor="let row of compraAnimalRows; let i = index">
+                  <select [name]="'compraAnimalTipo' + i" [(ngModel)]="row.tipo" (keydown.enter)="handleAnimalClassEnter($event, compraAnimalRows)">
+                    <option [ngValue]="''">Tipo</option>
+                    <option *ngFor="let tipo of animalClassOptions" [ngValue]="tipo" [disabled]="!animalClassAvailable(tipo, compraAnimalRows, i)">{{ tipo }}</option>
+                  </select>
+                  <input type="number" min="0" step="1" [name]="'compraAnimalCantidad' + i" [(ngModel)]="row.cantidad" placeholder="Cantidad" (keydown.enter)="handleAnimalClassEnter($event, compraAnimalRows)">
+                  <input type="number" min="0" step="0.01" [name]="'compraAnimalPeso' + i" [(ngModel)]="row.pesoPromedio" placeholder="Peso prom. kg" (keydown.enter)="handleAnimalClassEnter($event, compraAnimalRows)">
+                  <button type="button" class="secondary mini-button" (click)="addAnimalClassRow(compraAnimalRows)" [disabled]="compraAnimalRows.length >= animalClassOptions.length">+</button>
+                  <button type="button" class="danger mini-button" (click)="removeAnimalClassRow(compraAnimalRows, i)" [disabled]="compraAnimalRows.length <= 1">-</button>
+                </div>
+              </div>
               <div class="distribution-form-actions">
                 <button type="button" (click)="guardarCompraLote()" [disabled]="compraLoading()">Guardar lote</button>
               </div>
@@ -193,6 +205,16 @@
                   <strong>{{ (lote.distribuidas | fmtNumber) }}</strong>
                   <small>Minimo permitido</small>
                 </div>
+                <div class="local-summary-card">
+                  <span>Clasificacion</span>
+                  <strong>VAC {{ (lote.cantidad_vac | fmtNumber) }} / TOR {{ (lote.cantidad_tor | fmtNumber) }}</strong>
+                  <small>NOV {{ (lote.cantidad_nov | fmtNumber) }} / VAQ {{ (lote.cantidad_vaq | fmtNumber) }}</small>
+                </div>
+                <div class="local-summary-card">
+                  <span>Pesos promedio</span>
+                  <strong>VAC {{ (lote.peso_promedio_vac | fmtNumber:2) }} / TOR {{ (lote.peso_promedio_tor | fmtNumber:2) }}</strong>
+                  <small>NOV {{ (lote.peso_promedio_nov | fmtNumber:2) }} / VAQ {{ (lote.peso_promedio_vaq | fmtNumber:2) }} kg</small>
+                </div>
               </div>
 
               <div class="form-grid">
@@ -257,6 +279,18 @@
               <label>Cantidad <input type="number" min="1" step="1" name="modalCompraCantidad" [(ngModel)]="modalCompraCantidad"></label>
               <label>Peso kg <input type="number" min="0" step="0.01" name="modalCompraPesoKg" [(ngModel)]="modalCompraPesoKg"></label>
               <label>Monto Gs <input type="number" min="0" step="1" name="modalCompraMonto" [(ngModel)]="modalCompraMonto"></label>
+              <div class="animal-type-grid">
+                <div class="animal-type-row" *ngFor="let row of modalCompraAnimalRows; let i = index">
+                  <select [name]="'modalAnimalTipo' + i" [(ngModel)]="row.tipo" (keydown.enter)="handleAnimalClassEnter($event, modalCompraAnimalRows)">
+                    <option [ngValue]="''">Tipo</option>
+                    <option *ngFor="let tipo of animalClassOptions" [ngValue]="tipo" [disabled]="!animalClassAvailable(tipo, modalCompraAnimalRows, i)">{{ tipo }}</option>
+                  </select>
+                  <input type="number" min="0" step="1" [name]="'modalAnimalCantidad' + i" [(ngModel)]="row.cantidad" placeholder="Cantidad" (keydown.enter)="handleAnimalClassEnter($event, modalCompraAnimalRows)">
+                  <input type="number" min="0" step="0.01" [name]="'modalAnimalPeso' + i" [(ngModel)]="row.pesoPromedio" placeholder="Peso prom. kg" (keydown.enter)="handleAnimalClassEnter($event, modalCompraAnimalRows)">
+                  <button type="button" class="secondary mini-button" (click)="addAnimalClassRow(modalCompraAnimalRows)" [disabled]="modalCompraAnimalRows.length >= animalClassOptions.length">+</button>
+                  <button type="button" class="danger mini-button" (click)="removeAnimalClassRow(modalCompraAnimalRows, i)" [disabled]="modalCompraAnimalRows.length <= 1">-</button>
+                </div>
+              </div>
             </div>
             <div class="modal-actions">
               <button type="button" (click)="guardarCompraEditada()" [disabled]="compraLoading()">Guardar cambios</button>

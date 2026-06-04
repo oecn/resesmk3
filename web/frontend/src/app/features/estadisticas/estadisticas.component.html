@@ -63,6 +63,23 @@
 
     <section class="panel">
       <div class="panel-title">
+        <h2>Clasificacion de compras</h2>
+        <span>Cantidad comprada y participacion por tipo</span>
+      </div>
+      <div class="animal-stats-grid">
+        <article class="animal-stat-card" *ngFor="let row of stats.clasificacionCompras">
+          <div>
+            <span>{{ row.tipo }}</span>
+            <strong>{{ row.cantidad | fmtNumber }}</strong>
+            <small>{{ row.participacion_pct | fmtNumber:2 }}% del total comprado</small>
+          </div>
+          <div class="bar-track"><span [style.width]="barWidth(row.participacion_pct, 100)"></span></div>
+        </article>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-title">
         <h2>Alertas de gestion</h2>
         <span>Costo/kg, rendimiento, concentracion y pendientes antiguos</span>
       </div>

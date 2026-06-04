@@ -19,6 +19,14 @@ export class ComprasFaenaService {
     cantidad: number | string;
     monto: number | string;
     peso_compra_kg: number | string;
+    cantidad_vac: number | string;
+    cantidad_tor: number | string;
+    cantidad_nov: number | string;
+    cantidad_vaq: number | string;
+    peso_promedio_vac: number | string;
+    peso_promedio_tor: number | string;
+    peso_promedio_nov: number | string;
+    peso_promedio_vaq: number | string;
   }): Observable<CompraFaenaLote> {
     return this.api.post<CompraFaenaLote>('/compras-faena/lotes', payload);
   }

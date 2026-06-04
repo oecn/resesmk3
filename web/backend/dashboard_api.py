@@ -245,6 +245,19 @@ class DashboardRepository:
                 )
                 cur.execute(
                     """
+                    ALTER TABLE lotes
+                    ADD COLUMN IF NOT EXISTS cantidad_vac INTEGER NOT NULL DEFAULT 0,
+                    ADD COLUMN IF NOT EXISTS cantidad_tor INTEGER NOT NULL DEFAULT 0,
+                    ADD COLUMN IF NOT EXISTS cantidad_nov INTEGER NOT NULL DEFAULT 0,
+                    ADD COLUMN IF NOT EXISTS cantidad_vaq INTEGER NOT NULL DEFAULT 0,
+                    ADD COLUMN IF NOT EXISTS peso_promedio_vac NUMERIC(10, 2) NOT NULL DEFAULT 0,
+                    ADD COLUMN IF NOT EXISTS peso_promedio_tor NUMERIC(10, 2) NOT NULL DEFAULT 0,
+                    ADD COLUMN IF NOT EXISTS peso_promedio_nov NUMERIC(10, 2) NOT NULL DEFAULT 0,
+                    ADD COLUMN IF NOT EXISTS peso_promedio_vaq NUMERIC(10, 2) NOT NULL DEFAULT 0
+                    """
+                )
+                cur.execute(
+                    """
                     ALTER TABLE cargas_combustible
                     ADD COLUMN IF NOT EXISTS eliminado_en TIMESTAMP NULL
                     """
@@ -311,6 +324,14 @@ class DashboardRepository:
                     ELSE 100
                 END AS pct_restante,
                 COALESCE(L.peso_compra_kg, 0.0) AS kgcompra,
+                COALESCE(L.cantidad_tor, 0)::int AS cantidad_tor,
+                COALESCE(L.cantidad_nov, 0)::int AS cantidad_nov,
+                COALESCE(L.cantidad_vac, 0)::int AS cantidad_vac,
+                COALESCE(L.cantidad_vaq, 0)::int AS cantidad_vaq,
+                COALESCE(L.peso_promedio_tor, 0.0) AS peso_promedio_tor,
+                COALESCE(L.peso_promedio_nov, 0.0) AS peso_promedio_nov,
+                COALESCE(L.peso_promedio_vac, 0.0) AS peso_promedio_vac,
+                COALESCE(L.peso_promedio_vaq, 0.0) AS peso_promedio_vaq,
                 CASE
                     WHEN COALESCE(L.peso_compra_kg, 0) > 0
                         THEN ROUND((COALESCE(D.kg_total, 0)::numeric / L.peso_compra_kg) * 100, 2)
@@ -2952,6 +2973,14 @@ class DashboardRepository:
                            COALESCE(D.distribuidas, 0)::int AS distribuidas,
                            L.monto,
                            COALESCE(L.peso_compra_kg, 0.0) AS peso_compra_kg,
+                           COALESCE(L.cantidad_vac, 0)::int AS cantidad_vac,
+                           COALESCE(L.cantidad_tor, 0)::int AS cantidad_tor,
+                           COALESCE(L.cantidad_nov, 0)::int AS cantidad_nov,
+                           COALESCE(L.cantidad_vaq, 0)::int AS cantidad_vaq,
+                           COALESCE(L.peso_promedio_vac, 0.0) AS peso_promedio_vac,
+                           COALESCE(L.peso_promedio_tor, 0.0) AS peso_promedio_tor,
+                           COALESCE(L.peso_promedio_nov, 0.0) AS peso_promedio_nov,
+                           COALESCE(L.peso_promedio_vaq, 0.0) AS peso_promedio_vaq,
                            COALESCE(L.cerrado, false) AS cerrado
                     FROM lotes L
                     LEFT JOIN (
@@ -3027,6 +3056,15 @@ class DashboardRepository:
         cantidad = _parse_int(payload.get("cantidad") or 0)
         monto = _parse_number(payload.get("monto") or 0)
         peso_compra_kg = _parse_number(payload.get("peso_compra_kg") or 0)
+        cantidad_vac = _parse_int(payload.get("cantidad_vac") or 0)
+        cantidad_tor = _parse_int(payload.get("cantidad_tor") or 0)
+        cantidad_nov = _parse_int(payload.get("cantidad_nov") or 0)
+        cantidad_vaq = _parse_int(payload.get("cantidad_vaq") or 0)
+        peso_promedio_vac = _parse_number(payload.get("peso_promedio_vac") or 0)
+        peso_promedio_tor = _parse_number(payload.get("peso_promedio_tor") or 0)
+        peso_promedio_nov = _parse_number(payload.get("peso_promedio_nov") or 0)
+        peso_promedio_vaq = _parse_number(payload.get("peso_promedio_vaq") or 0)
+        clasificacion_total = cantidad_vac + cantidad_tor + cantidad_nov + cantidad_vaq
 
         if not lote or not empresa or not fecha:
             raise ValueError("Complete lote, empresa y fecha.")
@@ -3038,6 +3076,12 @@ class DashboardRepository:
             raise ValueError("El monto no puede ser negativo.")
         if peso_compra_kg < 0:
             raise ValueError("El peso total debe ser mayor o igual a 0.")
+        if any(value < 0 for value in (cantidad_vac, cantidad_tor, cantidad_nov, cantidad_vaq)):
+            raise ValueError("Las cantidades por clase no pueden ser negativas.")
+        if any(value < 0 for value in (peso_promedio_vac, peso_promedio_tor, peso_promedio_nov, peso_promedio_vaq)):
+            raise ValueError("Los pesos promedio por clase no pueden ser negativos.")
+        if clasificacion_total != cantidad:
+            raise ValueError("La suma VAC + TOR + NOV + VAQ debe ser igual a la cantidad comprada.")
 
         with self._connect(readonly=False) as conn:
             try:
@@ -3053,20 +3097,74 @@ class DashboardRepository:
                         cur.execute(
                             """
                             UPDATE lotes
-                            SET lote = %s, empresa = %s, fecha = %s, cantidad = %s, monto = %s, peso_compra_kg = %s
+                            SET lote = %s,
+                                empresa = %s,
+                                fecha = %s,
+                                cantidad = %s,
+                                monto = %s,
+                                peso_compra_kg = %s,
+                                cantidad_vac = %s,
+                                cantidad_tor = %s,
+                                cantidad_nov = %s,
+                                cantidad_vaq = %s,
+                                peso_promedio_vac = %s,
+                                peso_promedio_tor = %s,
+                                peso_promedio_nov = %s,
+                                peso_promedio_vaq = %s
                             WHERE id = %s
-                            RETURNING id, lote, empresa, fecha, cantidad, monto, COALESCE(peso_compra_kg, 0.0) AS peso_compra_kg
+                            RETURNING id, lote, empresa, fecha, cantidad, monto,
+                                      COALESCE(peso_compra_kg, 0.0) AS peso_compra_kg,
+                                      cantidad_vac, cantidad_tor, cantidad_nov, cantidad_vaq,
+                                      peso_promedio_vac, peso_promedio_tor, peso_promedio_nov, peso_promedio_vaq
                             """,
-                            (lote, empresa, fecha, cantidad, monto, peso_compra_kg, int(lote_id)),
+                            (
+                                lote,
+                                empresa,
+                                fecha,
+                                cantidad,
+                                monto,
+                                peso_compra_kg,
+                                cantidad_vac,
+                                cantidad_tor,
+                                cantidad_nov,
+                                cantidad_vaq,
+                                peso_promedio_vac,
+                                peso_promedio_tor,
+                                peso_promedio_nov,
+                                peso_promedio_vaq,
+                                int(lote_id),
+                            ),
                         )
                     else:
                         cur.execute(
                             """
-                            INSERT INTO lotes(lote, empresa, fecha, cantidad, monto, peso_compra_kg)
-                            VALUES (%s, %s, %s, %s, %s, %s)
-                            RETURNING id, lote, empresa, fecha, cantidad, monto, COALESCE(peso_compra_kg, 0.0) AS peso_compra_kg
+                            INSERT INTO lotes(
+                                lote, empresa, fecha, cantidad, monto, peso_compra_kg,
+                                cantidad_vac, cantidad_tor, cantidad_nov, cantidad_vaq,
+                                peso_promedio_vac, peso_promedio_tor, peso_promedio_nov, peso_promedio_vaq
+                            )
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                            RETURNING id, lote, empresa, fecha, cantidad, monto,
+                                      COALESCE(peso_compra_kg, 0.0) AS peso_compra_kg,
+                                      cantidad_vac, cantidad_tor, cantidad_nov, cantidad_vaq,
+                                      peso_promedio_vac, peso_promedio_tor, peso_promedio_nov, peso_promedio_vaq
                             """,
-                            (lote, empresa, fecha, cantidad, monto, peso_compra_kg),
+                            (
+                                lote,
+                                empresa,
+                                fecha,
+                                cantidad,
+                                monto,
+                                peso_compra_kg,
+                                cantidad_vac,
+                                cantidad_tor,
+                                cantidad_nov,
+                                cantidad_vaq,
+                                peso_promedio_vac,
+                                peso_promedio_tor,
+                                peso_promedio_nov,
+                                peso_promedio_vaq,
+                            ),
                         )
                     row = cur.fetchone()
                     if not row:
@@ -3246,6 +3344,14 @@ class DashboardRepository:
                            pct_distribuido,
                            pct_restante,
                            kgcompra,
+                           cantidad_tor,
+                           cantidad_nov,
+                           cantidad_vac,
+                           cantidad_vaq,
+                           peso_promedio_tor,
+                           peso_promedio_nov,
+                           peso_promedio_vac,
+                           peso_promedio_vaq,
                            rend_pct
                     FROM resumen_lotes
                     ORDER BY fecha DESC, lote
@@ -3448,6 +3554,45 @@ class DashboardRepository:
                 sucursales = cur.fetchall()
 
                 cur.execute(
+                    """
+                    WITH tipos AS (
+                        SELECT 'TOR' AS tipo, COALESCE(SUM(cantidad_tor), 0)::int AS cantidad
+                        FROM lotes
+                        WHERE (%s::date IS NULL OR fecha >= %s::date)
+                          AND (%s::date IS NULL OR fecha <= %s::date)
+                        UNION ALL
+                        SELECT 'NOV' AS tipo, COALESCE(SUM(cantidad_nov), 0)::int AS cantidad
+                        FROM lotes
+                        WHERE (%s::date IS NULL OR fecha >= %s::date)
+                          AND (%s::date IS NULL OR fecha <= %s::date)
+                        UNION ALL
+                        SELECT 'VAC' AS tipo, COALESCE(SUM(cantidad_vac), 0)::int AS cantidad
+                        FROM lotes
+                        WHERE (%s::date IS NULL OR fecha >= %s::date)
+                          AND (%s::date IS NULL OR fecha <= %s::date)
+                        UNION ALL
+                        SELECT 'VAQ' AS tipo, COALESCE(SUM(cantidad_vaq), 0)::int AS cantidad
+                        FROM lotes
+                        WHERE (%s::date IS NULL OR fecha >= %s::date)
+                          AND (%s::date IS NULL OR fecha <= %s::date)
+                    ),
+                    total AS (
+                        SELECT COALESCE(SUM(cantidad), 0)::numeric AS total_cantidad
+                        FROM tipos
+                    )
+                    SELECT tipo,
+                           cantidad,
+                           CASE WHEN total.total_cantidad > 0
+                                THEN ROUND((cantidad::numeric / total.total_cantidad) * 100, 2)
+                                ELSE 0 END AS participacion_pct
+                    FROM tipos, total
+                    ORDER BY CASE tipo WHEN 'TOR' THEN 1 WHEN 'NOV' THEN 2 WHEN 'VAC' THEN 3 ELSE 4 END
+                    """,
+                    params + params + params + params,
+                )
+                clasificacion_compras = cur.fetchall()
+
+                cur.execute(
                     f"""
                     WITH resumen_lotes AS ({self._resumen_lotes_cte()}),
                     dist_lotes AS (
@@ -3591,6 +3736,7 @@ class DashboardRepository:
             "mejoresLotes": mejores_lotes,
             "alertas": alertas,
             "alertasGestion": alertas_gestion,
+            "clasificacionCompras": clasificacion_compras,
         }
 
     def set_lotes_resumen_cerrado(self, payload):

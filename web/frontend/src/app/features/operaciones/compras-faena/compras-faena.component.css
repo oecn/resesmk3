@@ -13,3 +13,29 @@
   font-weight: 800;
   margin-right: auto;
 }
+
+.animal-type-grid {
+  display: grid;
+  gap: 10px;
+  grid-column: 1 / -1;
+  grid-template-columns: minmax(280px, 720px);
+}
+
+.animal-type-row {
+  align-items: end;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 92px minmax(0, 1fr) minmax(0, 1fr) 40px 40px;
+}
+
+.animal-type-row .mini-button {
+  min-height: 42px;
+  padding: 0;
+}
+
+@media (max-width: 560px) {
+  .animal-type-grid,
+  .animal-type-row {
+    grid-template-columns: 1fr;
+  }
+}
