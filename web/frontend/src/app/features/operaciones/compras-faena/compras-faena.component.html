@@ -72,7 +72,7 @@
               </label>
               <div class="animal-type-grid">
                 <div class="animal-type-row" *ngFor="let row of compraAnimalRows; let i = index">
-                  <select [name]="'compraAnimalTipo' + i" [(ngModel)]="row.tipo" (keydown.enter)="handleAnimalClassEnter($event, compraAnimalRows)">
+                  <select [name]="'compraAnimalTipo' + i" [(ngModel)]="row.tipo">
                     <option [ngValue]="''">Tipo</option>
                     <option *ngFor="let tipo of animalClassOptions" [ngValue]="tipo" [disabled]="!animalClassAvailable(tipo, compraAnimalRows, i)">{{ tipo }}</option>
                   </select>
@@ -281,7 +281,7 @@
               <label>Monto Gs <input type="number" min="0" step="1" name="modalCompraMonto" [(ngModel)]="modalCompraMonto"></label>
               <div class="animal-type-grid">
                 <div class="animal-type-row" *ngFor="let row of modalCompraAnimalRows; let i = index">
-                  <select [name]="'modalAnimalTipo' + i" [(ngModel)]="row.tipo" (keydown.enter)="handleAnimalClassEnter($event, modalCompraAnimalRows)">
+                  <select [name]="'modalAnimalTipo' + i" [(ngModel)]="row.tipo">
                     <option [ngValue]="''">Tipo</option>
                     <option *ngFor="let tipo of animalClassOptions" [ngValue]="tipo" [disabled]="!animalClassAvailable(tipo, modalCompraAnimalRows, i)">{{ tipo }}</option>
                   </select>
